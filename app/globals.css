@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0b0f17;
+  --color-surface: #0f1521;
+  --color-card: #131a2b;
+  --color-card-hover: #182034;
+  --color-border-subtle: #1f2940;
+  --color-ink: #dbe4f3;
+  --color-ink-muted: #8b97b0;
+  --color-ink-faint: #5b6680;
+
+  --color-accent-blue: #5aa6ff;
+  --color-accent-purple: #8b7bff;
+  --color-accent-orange: #ef8a52;
+  --color-accent-green: #1bb38c;
+  --color-accent-pink: #e766a0;
+
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", "Fira Code", Menlo, monospace;
+  --font-display: var(--font-space), "Space Grotesk", -apple-system, sans-serif;
+
+  --radius-card: 14px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-jetbrains), ui-monospace, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Scrollbars to match the dark theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3450 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a3450;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a4564;
+}
+
+/* React Flow theme overrides */
+.react-flow__background {
+  background: var(--color-canvas);
+}
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--color-canvas);
+}
+.react-flow__attribution {
+  display: none;
+}
+
+/* Per-column connection handles: hidden until the card is hovered */
+.erd-col-handle {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.react-flow__node:hover .erd-col-handle {
+  opacity: 1;
+}
+
+/* Hover-to-focus — matches AI Manager Schema ERD.html */
+.erd-card {
+  transition:
+    opacity 0.14s ease,
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
+}
+
+/* Hovered card: accent border on all sides + raised shadow */
+.react-flow__node.erd-node-active .erd-card {
+  border-top-color: var(--accent) !important;
+  border-right-color: var(--accent) !important;
+  border-bottom-color: var(--accent) !important;
+  border-left-color: var(--accent) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  opacity: 1 !important;
+}
+
+/* Direct neighbors: full opacity, default border */
+.react-flow__node.erd-node-related .erd-card {
+  opacity: 1 !important;
+}
+
+/* Everything else dims */
+.react-flow__node.erd-node-dim .erd-card {
+  opacity: 0.26;
+}
+
+/* Edge focus / dim on card hover */
+.react-flow__edge .react-flow__edge-path {
+  transition:
+    opacity 0.14s ease,
+    stroke-width 0.14s ease;
+}
+.react-flow__edge.erd-edge-focus .react-flow__edge-path {
+  opacity: 1 !important;
+  stroke-width: 2.4;
+}
+.react-flow__edge.erd-edge-dim .react-flow__edge-path {
+  opacity: 0.08 !important;
+}
+.react-flow__edge.erd-edge-dotted .react-flow__edge-path {
+  stroke-dasharray: 6 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
