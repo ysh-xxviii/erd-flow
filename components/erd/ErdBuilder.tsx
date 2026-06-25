@@ -125,13 +125,30 @@ function ErdBuilderInner({
   const [showFirstVisitHint, setShowFirstVisitHint] = useState(false);
   const [applyNotice, setApplyNotice] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const hoveredIdRef = useRef(hoveredId);
-  hoveredIdRef.current = hoveredId;
+
+  // Keep latest table geometry for cursor hit-testing without re-creating the
+  // pointer handler on every change.
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       const flow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      sendCursor(flow.x, flow.y, hoveredIdRef.current);
+      // Derive the hovered table from the same flow point we broadcast so the
+      // remote outline can never drift onto a neighboring table.
+      let overId: string | null = null;
+      for (const t of tablesRef.current) {
+        const h = nodeHeight(t);
+        if (
+          flow.x >= t.pos_x &&
+          flow.x <= t.pos_x + NODE_W &&
+          flow.y >= t.pos_y &&
+          flow.y <= t.pos_y + h
+        ) {
+          overId = t.id;
+        }
+      }
+      sendCursor(flow.x, flow.y, overId);
     },
     [screenToFlowPosition, sendCursor]
   );
