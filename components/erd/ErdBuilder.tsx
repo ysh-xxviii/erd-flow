@@ -19,21 +19,37 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { buildPlaybookGuide, type PlaybookGuide } from "@/lib/playbookGuide";
 import {
   SCHEMA_COLORS,
   tableColorHex,
   type Diagram,
   type ErdRelationship,
   type ErdTable,
+  type PlaybookStep,
+  type WorkspaceRole,
 } from "@/lib/types";
 import { useErd } from "./useErd";
-import { computeHoverFocus } from "@/lib/erdLayout";
+import { computeHoverFocus, resolveEdgeHandles } from "@/lib/erdLayout";
 import { findJsonShape } from "@/lib/jsonShapes";
 import { EntityNode, NODE_W, nodeHeight } from "./EntityNode";
 import { SidePanel } from "./SidePanel";
 import { TableEditorDrawer } from "./TableEditorDrawer";
 import { JsonSchemaDrawer } from "./JsonSchemaDrawer";
 import { AiSuggestPanel } from "./AiSuggestPanel";
+import { MigrationsPanel } from "./MigrationsPanel";
+import { PlaybookPanel } from "./PlaybookPanel";
+import {
+  PlaybookGuideOverlay,
+  guideNodeClassName,
+  useFitGuideTables,
+} from "./PlaybookGuideOverlay";
+import { PresenceCursors, PresenceAvatars } from "./PresenceLayer";
+import { CommentsPanel } from "./CommentsPanel";
+import { useRealtimeErd } from "@/lib/useRealtimeErd";
+import { usePresence } from "@/lib/usePresence";
+import { listComments } from "@/lib/comments";
+import { createClient } from "@/lib/supabase/client";
 
 const nodeTypes: NodeTypes = { entity: EntityNode };
 
@@ -47,17 +63,34 @@ function ErdBuilderInner({
   diagram,
   initialTables,
   initialRelationships,
+  userRole,
+  currentUser,
 }: {
   diagram: Diagram;
   initialTables: ErdTable[];
   initialRelationships: ErdRelationship[];
+  userRole: WorkspaceRole;
+  currentUser: { id: string; name: string };
 }) {
+  const isOwner = userRole === "owner";
   const erd = useErd(diagram.id, initialTables, initialRelationships);
-  const { tables, relationships, saving, moveTable, addRelationship, deleteRelationship, relayoutAllTables } =
+  const { tables, relationships, saving, moveTable, addRelationship, deleteRelationship, relayoutAllTables, deleteTable } =
     erd;
 
-  const { zoomIn, zoomOut, fitView, setCenter } = useReactFlow();
+  useRealtimeErd(diagram.id, { reload: erd.reload, setTables: erd.setTables });
+  const { peers, cursors, sendCursor } = usePresence(diagram.id, currentUser);
+
+  const { zoomIn, zoomOut, fitView, setCenter, screenToFlowPosition } =
+    useReactFlow();
   const { zoom } = useViewport();
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const flow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      sendCursor(flow.x, flow.y);
+    },
+    [screenToFlowPosition, sendCursor]
+  );
 
   const [selectedTableId, setSelectedTableId] = useState<string | null>(
     initialTables[0]?.id ?? null
@@ -65,7 +98,109 @@ function ErdBuilderInner({
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [jsonColumnId, setJsonColumnId] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
+  const [migrationsOpen, setMigrationsOpen] = useState(false);
+  const [playbookOpen, setPlaybookOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentFocusTableId, setCommentFocusTableId] = useState<string | null>(
+    null
+  );
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {}
+  );
+  const [generalCommentCount, setGeneralCommentCount] = useState(0);
+  const [activeGuide, setActiveGuide] = useState<PlaybookGuide | null>(null);
+  const [guidePhaseIndex, setGuidePhaseIndex] = useState(0);
+  const [pulseAddTable, setPulseAddTable] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showFirstVisitHint, setShowFirstVisitHint] = useState(false);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = "erd-flow-hint-seen";
+    if (!localStorage.getItem(key) && initialTables.length === 0) {
+      setShowFirstVisitHint(true);
+    }
+  }, [initialTables.length]);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const rows = await listComments(diagram.id);
+        if (!active) return;
+        const counts: Record<string, number> = {};
+        let general = 0;
+        for (const c of rows) {
+          if (c.resolved) continue;
+          if (c.table_id) {
+            counts[c.table_id] = (counts[c.table_id] ?? 0) + 1;
+          } else {
+            general += 1;
+          }
+        }
+        setCommentCounts(counts);
+        setGeneralCommentCount(general);
+      } catch {
+        /* non-fatal */
+      }
+    };
+    void refresh();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`comment-counts:${diagram.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "diagram_comments",
+          filter: `diagram_id=eq.${diagram.id}`,
+        },
+        () => void refresh()
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [diagram.id]);
+
+  const openComments = useCallback((tableId: string | null) => {
+    setCommentFocusTableId(tableId);
+    setCommentsOpen(true);
+  }, []);
+
+  const totalOpenComments = useMemo(
+    () =>
+      Object.values(commentCounts).reduce((a, b) => a + b, 0) +
+      generalCommentCount,
+    [commentCounts, generalCommentCount]
+  );
+
+  const fitGuideTables = useFitGuideTables(activeGuide, tables);
+  const currentGuidePhase = activeGuide?.phases[guidePhaseIndex];
+
+  const dismissGuide = useCallback(() => {
+    setActiveGuide(null);
+    setGuidePhaseIndex(0);
+    setPulseAddTable(false);
+  }, []);
+
+  const startGuide = useCallback(
+    (step: PlaybookStep) => {
+      const guide = buildPlaybookGuide(step, tables, relationships);
+      if (!guide) return;
+      setPlaybookOpen(false);
+      setActiveGuide(guide);
+      setGuidePhaseIndex(0);
+      setTimeout(() => fitGuideTables(), 120);
+    },
+    [tables, relationships, fitGuideTables]
+  );
 
   const openJsonSchema = useCallback((columnId: string) => {
     setEditingTableId(null);
@@ -127,9 +262,11 @@ function ErdBuilderInner({
           columns: t.columns,
           fkRefs,
           onJsonClick: openJsonSchema,
+          commentCount: commentCounts[t.id] ?? 0,
+          onCommentClick: () => openComments(t.id),
         },
       })),
-    [fkRefs, openJsonSchema]
+    [fkRefs, openJsonSchema, commentCounts, openComments]
   );
 
   const buildEdges = useCallback(
@@ -146,13 +283,14 @@ function ErdBuilderInner({
         const isNullableFk =
           !!sourceCol?.is_fk && (sourceCol.is_nullable ?? false);
         const isDotted = isFramework || isNullableFk;
+        const { sourceHandle, targetHandle } = resolveEdgeHandles(r, list);
         return {
           id: r.id,
           source: r.source_table_id,
           target: r.target_table_id,
-          sourceHandle: r.source_col_id ? `s-${r.source_col_id}` : "s-table",
-          targetHandle: r.target_col_id ? `t-${r.target_col_id}` : "t-table",
-          type: "default",
+          sourceHandle,
+          targetHandle,
+          type: "smoothstep",
           className: isDotted ? "erd-edge-dotted" : undefined,
           style: { stroke: color, strokeWidth: 1.8, opacity: 0.85 },
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
@@ -179,8 +317,17 @@ function ErdBuilderInner({
   const displayNodes = useMemo(
     () =>
       nodes.map((n) => {
+        if (activeGuide) {
+          const { className, zIndex } = guideNodeClassName(
+            n.id,
+            currentGuidePhase,
+            hoveredId,
+            relatedIds
+          );
+          return { ...n, className, zIndex };
+        }
         if (!hoveredId) {
-          return { ...n, zIndex: 2 };
+          return { ...n, className: "", zIndex: 2 };
         }
         const isActive = n.id === hoveredId;
         const isRelated = relatedIds.has(n.id);
@@ -193,7 +340,7 @@ function ErdBuilderInner({
           zIndex: isActive ? 10 : isRelated ? 4 : 1,
         };
       }),
-    [nodes, hoveredId, relatedIds]
+    [nodes, hoveredId, relatedIds, activeGuide, currentGuidePhase]
   );
 
   const displayEdges = useMemo(
@@ -240,10 +387,36 @@ function ErdBuilderInner({
     [moveTable]
   );
 
-  const editingTable = useMemo(
-    () => tables.find((t) => t.id === editingTableId) ?? null,
-    [tables, editingTableId]
+  const editingTable = editingTableId;
+  const openTableEditor = useCallback(
+    (id: string) => {
+      if (saving) return;
+      setApplyNotice(null);
+      setJsonColumnId(null);
+      setSelectedTableId(id);
+      setEditingTableId(id);
+      focusTable(id);
+    },
+    [focusTable, saving]
   );
+
+  const deleteTarget = deleteConfirmId
+    ? tables.find((t) => t.id === deleteConfirmId)
+    : null;
+
+  async function confirmDeleteTable() {
+    if (!deleteConfirmId) return;
+    await deleteTable(deleteConfirmId);
+    if (selectedTableId === deleteConfirmId) setSelectedTableId(null);
+    if (editingTableId === deleteConfirmId) setEditingTableId(null);
+    setDeleteConfirmId(null);
+  }
+
+  function dismissFirstVisitHint(openPlaybook?: boolean) {
+    localStorage.setItem("erd-flow-hint-seen", "1");
+    setShowFirstVisitHint(false);
+    if (openPlaybook) setPlaybookOpen(true);
+  }
 
   return (
     <div
@@ -255,19 +428,19 @@ function ErdBuilderInner({
         diagramName={diagram.name}
         hoveredId={hoveredId}
         relatedIds={relatedIds}
+        editingTableId={editingTableId}
         onHoverTable={setHoveredId}
         onFocusTable={focusTable}
         onOpenJsonShape={openJsonSchema}
         selectedJsonColumnId={jsonColumnId}
-        onEditTable={(id) => {
-          setJsonColumnId(null);
-          setSelectedTableId(id);
-          setEditingTableId(id);
-        }}
+        onEditTable={openTableEditor}
+        onDeleteTable={(id) => setDeleteConfirmId(id)}
         onOpenAi={() => setAiOpen(true)}
+        onOpenPlaybook={() => setPlaybookOpen(true)}
+        pulseAddTable={pulseAddTable}
       />
 
-      <div className="relative flex-1">
+      <div className="relative flex-1" onPointerMove={onPointerMove}>
         {/* top-left: back + saving */}
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
           <Link
@@ -281,6 +454,9 @@ function ErdBuilderInner({
               Saving…
             </span>
           )}
+          <div className="pointer-events-auto ml-1">
+            <PresenceAvatars peers={peers} selfId={currentUser.id} />
+          </div>
         </div>
 
         {/* top-right: zoom toolbar */}
@@ -324,6 +500,45 @@ function ErdBuilderInner({
           >
             Fit
           </button>
+          <button
+            type="button"
+            onClick={() => openComments(selectedTableId)}
+            className="relative h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
+          >
+            Comments
+            {totalOpenComments > 0 && (
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#e3b341] px-1 text-[9px] font-bold text-[#0c111c]">
+                {totalOpenComments}
+              </span>
+            )}
+          </button>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setMigrationsOpen(true)}
+              className="h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
+            >
+              Migrations
+            </button>
+          )}
+          {selectedTableId && (
+            <>
+              <button
+                type="button"
+                onClick={() => openTableEditor(selectedTableId)}
+                className="h-8 cursor-pointer rounded-lg border border-accent-blue/50 bg-accent-blue/15 px-3 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/25"
+              >
+                Edit table
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmId(selectedTableId)}
+                className="h-8 cursor-pointer rounded-lg border border-red-500/40 bg-red-500/10 px-3 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+              >
+                Delete table
+              </button>
+            </>
+          )}
         </div>
 
         <ReactFlow
@@ -335,12 +550,11 @@ function ErdBuilderInner({
           onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}
           onNodeMouseEnter={(_, node) => setHoveredId(node.id)}
-          onNodeClick={(_, node) => setSelectedTableId(node.id)}
-          onNodeDoubleClick={(_, node) => {
-            setJsonColumnId(null);
+          onNodeClick={(_, node) => {
             setSelectedTableId(node.id);
-            setEditingTableId(node.id);
+            focusTable(node.id);
           }}
+          onNodeDoubleClick={(_, node) => openTableEditor(node.id)}
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.2}
@@ -355,6 +569,8 @@ function ErdBuilderInner({
             color="rgba(255,255,255,0.06)"
           />
         </ReactFlow>
+
+        <PresenceCursors cursors={cursors} />
 
         {/* legend */}
         <div className="pointer-events-none absolute bottom-4 left-4 z-10 rounded-lg border border-[#1d2740] bg-[rgba(12,17,28,0.92)] px-3 py-2.5 text-[10.5px] text-[#9aa6c2] backdrop-blur">
@@ -394,10 +610,70 @@ function ErdBuilderInner({
 
         {/* hint */}
         <div className="pointer-events-none absolute bottom-4 right-4 z-10 text-[10px] text-[#46506a]">
-          drag header to move · drag canvas to pan · scroll to zoom · hover to focus
+          click to select · double-click to edit · scroll to zoom · hover to focus
         </div>
 
-        {tables.length === 0 && (
+        {activeGuide && (
+          <PlaybookGuideOverlay
+            guide={activeGuide}
+            tables={tables}
+            phaseIndex={guidePhaseIndex}
+            onPhaseChange={setGuidePhaseIndex}
+            onDismiss={dismissGuide}
+            onPulseAddTable={setPulseAddTable}
+          />
+        )}
+
+        {applyNotice && (
+          <div className="pointer-events-auto absolute left-1/2 top-16 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-accent-green/40 bg-[rgba(12,17,28,0.95)] px-4 py-2.5 shadow-lg backdrop-blur">
+            <span className="text-sm text-accent-green">{applyNotice}</span>
+            <button
+              type="button"
+              onClick={() => setApplyNotice(null)}
+              className="cursor-pointer text-xs text-ink-faint hover:text-ink"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {showFirstVisitHint && tables.length === 0 && (
+          <div className="pointer-events-auto absolute left-1/2 top-1/2 z-20 w-[min(360px,90%)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-accent-green/40 bg-[rgba(12,17,28,0.97)] p-5 shadow-2xl backdrop-blur">
+            <h3 className="text-sm font-semibold text-ink">Getting started</h3>
+            <ul className="mt-3 space-y-2 text-xs leading-relaxed text-ink-muted">
+              <li>
+                <strong className="text-ink">Add a table</strong> — type a name in
+                the left sidebar and press Enter (no code needed).
+              </li>
+              <li>
+                <strong className="text-ink">Edit columns</strong> — click a table,
+                then Edit, or double-click the card.
+              </li>
+              <li>
+                <strong className="text-ink">Relationships</strong> — drag a line
+                between two tables on the canvas.
+              </li>
+            </ul>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => dismissFirstVisitHint(true)}
+                className="cursor-pointer rounded-lg bg-accent-green/15 px-3 py-1.5 text-xs font-semibold text-accent-green hover:bg-accent-green/25"
+              >
+                Open Playbook
+              </button>
+              <button
+                type="button"
+                onClick={() => dismissFirstVisitHint()}
+                className="cursor-pointer rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-ink-muted hover:text-ink"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tables.length === 0 && !showFirstVisitHint && (
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
             <p className="text-sm text-ink-muted">Add a table from the panel, or use</p>
             <p className="mt-1 text-sm font-medium text-accent-purple">
@@ -418,7 +694,7 @@ function ErdBuilderInner({
       {editingTable && !jsonShape && (
         <TableEditorDrawer
           erd={erd}
-          table={editingTable}
+          tableId={editingTable}
           onClose={() => setEditingTableId(null)}
         />
       )}
@@ -428,11 +704,79 @@ function ErdBuilderInner({
           tables={tables}
           onClose={() => setAiOpen(false)}
           onApply={async (selected) => {
-            await erd.applySuggestions(selected);
+            const createdIds = await erd.applySuggestions(selected);
             setAiOpen(false);
+            setApplyNotice(
+              createdIds.length > 0
+                ? `${createdIds.length} table${createdIds.length === 1 ? "" : "s"} added — double-click any table to edit`
+                : null
+            );
             setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 100);
           }}
         />
+      )}
+
+      {migrationsOpen && isOwner && (
+        <MigrationsPanel
+          diagramId={diagram.id}
+          diagramName={diagram.name}
+          tables={tables}
+          relationships={relationships}
+          onClose={() => setMigrationsOpen(false)}
+        />
+      )}
+
+      {playbookOpen && (
+        <PlaybookPanel
+          diagramId={diagram.id}
+          tables={tables}
+          relationships={relationships}
+          canManage={isOwner}
+          onClose={() => setPlaybookOpen(false)}
+          onStartGuide={startGuide}
+        />
+      )}
+
+      {commentsOpen && (
+        <CommentsPanel
+          diagramId={diagram.id}
+          currentUserId={currentUser.id}
+          canModerate={isOwner}
+          tables={tables}
+          focusTableId={commentFocusTableId}
+          onClose={() => {
+            setCommentsOpen(false);
+            setCommentFocusTableId(null);
+          }}
+        />
+      )}
+
+      {deleteConfirmId && deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-surface p-5 shadow-2xl">
+            <h3 className="text-base font-semibold text-ink">Delete table?</h3>
+            <p className="mt-2 text-sm text-ink-muted">
+              Remove <span className="font-mono text-ink">{deleteTarget.name}</span> and
+              all its columns? This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmId(null)}
+                className="cursor-pointer rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-ink-muted hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteTable}
+                className="cursor-pointer rounded-lg bg-red-500/20 px-3 py-1.5 text-sm font-semibold text-red-300 hover:bg-red-500/30"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -442,6 +786,8 @@ export function ErdBuilder(props: {
   diagram: Diagram;
   initialTables: ErdTable[];
   initialRelationships: ErdRelationship[];
+  userRole: WorkspaceRole;
+  currentUser: { id: string; name: string };
 }) {
   return (
     <ReactFlowProvider>

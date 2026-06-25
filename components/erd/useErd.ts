@@ -371,7 +371,7 @@ export function useErd(
   );
 
   const applySuggestions = useCallback(
-    async (suggestions: SuggestedTable[]) => {
+    async (suggestions: SuggestedTable[]): Promise<string[]> => {
       setSaving(true);
       const nameToId = new Map<string, string>();
       tables.forEach((t) => nameToId.set(t.name.toLowerCase(), t.id));
@@ -512,9 +512,43 @@ export function useErd(
       if (jsonShapeJobs.length) await Promise.all(jsonShapeJobs);
 
       setSaving(false);
+      return createdTables.map((t) => t.id);
     },
     [applyJsonShapeToColumn, diagramId, supabase, tables, relationships]
   );
+
+  const reload = useCallback(async () => {
+    const { data: tableRows } = await supabase
+      .from("erd_tables")
+      .select("*")
+      .eq("diagram_id", diagramId);
+
+    const ids = (tableRows ?? []).map((t) => t.id as string);
+    let columnRows: ErdColumn[] = [];
+    if (ids.length > 0) {
+      const { data } = await supabase
+        .from("erd_columns")
+        .select("*")
+        .in("table_id", ids)
+        .order("ordinal", { ascending: true });
+      columnRows = (data ?? []) as ErdColumn[];
+    }
+
+    const { data: relRows } = await supabase
+      .from("erd_relationships")
+      .select("*")
+      .eq("diagram_id", diagramId);
+
+    const nextTables = (tableRows ?? []).map((t) =>
+      mapTableRow(
+        t,
+        columnRows.filter((c) => c.table_id === t.id),
+        diagramId
+      )
+    );
+    setTables(nextTables);
+    setRelationships((relRows ?? []) as ErdRelationship[]);
+  }, [diagramId, supabase]);
 
   const relayoutAllTables = useCallback(async () => {
     setSaving(true);
@@ -553,6 +587,9 @@ export function useErd(
     applySuggestions,
     relayoutAllTables,
     generateJsonShape,
+    reload,
+    setTables,
+    setRelationships,
     DEFAULT_TYPES,
   };
 }

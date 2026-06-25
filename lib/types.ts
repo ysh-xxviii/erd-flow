@@ -155,3 +155,70 @@ export interface SuggestedTable {
 export interface SuggestResponse {
   suggestions: SuggestedTable[];
 }
+
+export type WorkspaceRole = "owner" | "member";
+
+export type PlaybookCheckType =
+  | "manual"
+  | "table_exists"
+  | "column_exists"
+  | "relationship_exists";
+
+export interface PlaybookCriteria {
+  table?: string;
+  column?: string;
+  from_table?: string;
+  to_table?: string;
+}
+
+export interface PlaybookStep {
+  id: string;
+  diagram_id: string;
+  ordinal: number;
+  title: string;
+  instructions: string;
+  check_type: PlaybookCheckType;
+  criteria: PlaybookCriteria;
+  is_done: boolean;
+  done_at: string | null;
+  done_by: string | null;
+  created_at: string;
+}
+
+export type PlaybookStepStatus = "pending" | "done" | "auto_verified";
+
+export interface PlaybookStepEval {
+  step: PlaybookStep;
+  status: PlaybookStepStatus;
+}
+
+export interface WorkspaceMemberInfo {
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  role: WorkspaceRole;
+  created_at: string;
+}
+
+export interface WorkspaceInvite {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: WorkspaceRole;
+  token: string;
+  invited_by: string | null;
+  accepted_at: string | null;
+  created_at: string;
+}
+
+export interface DiagramComment {
+  id: string;
+  diagram_id: string;
+  table_id: string | null;
+  column_id: string | null;
+  author_id: string | null;
+  author_name?: string | null;
+  body: string;
+  resolved: boolean;
+  created_at: string;
+}

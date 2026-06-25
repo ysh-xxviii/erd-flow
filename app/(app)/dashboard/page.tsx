@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import type { Diagram, Workspace } from "@/lib/types";
+import type {
+  Diagram,
+  Workspace,
+  WorkspaceInvite,
+  WorkspaceMemberInfo,
+} from "@/lib/types";
 import { createDiagram, deleteDiagram } from "../actions";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { NewDiagramForm } from "@/components/NewDiagramForm";
+import { MembersPanel } from "@/components/MembersPanel";
 
 export default async function DashboardPage({
   searchParams,
@@ -12,6 +18,14 @@ export default async function DashboardPage({
 }) {
   const { ws } = await searchParams;
   const supabase = await createClient();
+
+  // Auto-accept any invites addressed to this user's email before loading.
+  // Call the RPC directly (server actions can't revalidate during render).
+  await supabase.rpc("accept_pending_invites");
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { data: workspaces } = await supabase
     .from("workspaces")
@@ -23,6 +37,10 @@ export default async function DashboardPage({
     list.find((w) => w.id === ws) ?? list[0] ?? null;
 
   let diagrams: Diagram[] = [];
+  let members: WorkspaceMemberInfo[] = [];
+  let invites: WorkspaceInvite[] = [];
+  let isOwner = false;
+
   if (activeWorkspace) {
     const { data } = await supabase
       .from("diagrams")
@@ -30,6 +48,25 @@ export default async function DashboardPage({
       .eq("workspace_id", activeWorkspace.id)
       .order("updated_at", { ascending: false });
     diagrams = (data ?? []) as Diagram[];
+
+    const { data: memberRows } = await supabase.rpc("list_workspace_members", {
+      ws: activeWorkspace.id,
+    });
+    members = (memberRows ?? []) as WorkspaceMemberInfo[];
+
+    isOwner =
+      activeWorkspace.owner_id === user?.id ||
+      members.some((m) => m.user_id === user?.id && m.role === "owner");
+
+    if (isOwner) {
+      const { data: inviteRows } = await supabase
+        .from("workspace_invites")
+        .select("*")
+        .eq("workspace_id", activeWorkspace.id)
+        .is("accepted_at", null)
+        .order("created_at", { ascending: true });
+      invites = (inviteRows ?? []) as WorkspaceInvite[];
+    }
   }
 
   return (
@@ -68,6 +105,17 @@ export default async function DashboardPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {activeWorkspace && user && (
+        <MembersPanel
+          workspaceId={activeWorkspace.id}
+          workspaceOwnerId={activeWorkspace.owner_id}
+          currentUserId={user.id}
+          isOwner={isOwner}
+          members={members}
+          invites={invites}
+        />
       )}
     </main>
   );

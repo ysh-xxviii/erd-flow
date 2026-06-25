@@ -12,23 +12,31 @@ export function SidePanel({
   diagramName,
   hoveredId,
   relatedIds,
+  editingTableId,
   onHoverTable,
   onFocusTable,
   onOpenJsonShape,
   selectedJsonColumnId,
   onEditTable,
+  onDeleteTable,
   onOpenAi,
+  onOpenPlaybook,
+  pulseAddTable,
 }: {
   erd: Erd;
   diagramName: string;
   hoveredId: string | null;
   relatedIds: Set<string>;
+  editingTableId: string | null;
   onHoverTable: (id: string) => void;
   onFocusTable: (id: string) => void;
   onOpenJsonShape: (columnId: string) => void;
   selectedJsonColumnId: string | null;
   onEditTable: (id: string) => void;
+  onDeleteTable: (id: string) => void;
   onOpenAi: () => void;
+  onOpenPlaybook: () => void;
+  pulseAddTable?: boolean;
 }) {
   const [newTableName, setNewTableName] = useState("");
 
@@ -50,8 +58,19 @@ export function SidePanel({
         </h1>
         <button
           type="button"
+          onClick={onOpenPlaybook}
+          className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent-green/50 bg-accent-green/10 px-3 py-2 text-sm font-semibold text-accent-green transition-colors hover:bg-accent-green/20"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+          Playbook
+        </button>
+        <button
+          type="button"
           onClick={onOpenAi}
-          className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent-purple/50 bg-accent-purple/10 px-3 py-2 text-sm font-semibold text-accent-purple transition-colors hover:bg-accent-purple/20"
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent-purple/50 bg-accent-purple/10 px-3 py-2 text-sm font-semibold text-accent-purple transition-colors hover:bg-accent-purple/20"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" />
@@ -87,9 +106,11 @@ export function SidePanel({
                     table={t}
                     hoveredId={hoveredId}
                     relatedIds={relatedIds}
+                    active={editingTableId === t.id}
                     onHover={() => onHoverTable(t.id)}
                     onClick={() => onFocusTable(t.id)}
                     onEdit={() => onEditTable(t.id)}
+                    onDelete={() => onDeleteTable(t.id)}
                   />
                 ))}
               </Section>
@@ -118,9 +139,11 @@ export function SidePanel({
                       table={t}
                       hoveredId={hoveredId}
                       relatedIds={relatedIds}
+                      active={editingTableId === t.id}
                       onHover={() => onHoverTable(t.id)}
                       onClick={() => onFocusTable(t.id)}
                       onEdit={() => onEditTable(t.id)}
+                      onDelete={() => onDeleteTable(t.id)}
                     />
                   ))}
                 </Section>
@@ -134,9 +157,11 @@ export function SidePanel({
                       table={t}
                       hoveredId={hoveredId}
                       relatedIds={relatedIds}
+                      active={editingTableId === t.id}
                       onHover={() => onHoverTable(t.id)}
                       onClick={() => onFocusTable(t.id)}
                       onEdit={() => onEditTable(t.id)}
+                      onDelete={() => onDeleteTable(t.id)}
                     />
                   ))}
                 </Section>
@@ -145,7 +170,10 @@ export function SidePanel({
           );
         })()}
 
-        <form onSubmit={handleAddTable} className="mt-3 flex gap-2 px-4">
+        <form
+          onSubmit={handleAddTable}
+          className={`mt-3 flex gap-2 px-4 ${pulseAddTable ? "sidebar-add-table-pulse" : ""}`}
+        >
           <input
             value={newTableName}
             onChange={(e) => setNewTableName(e.target.value)}
@@ -161,9 +189,13 @@ export function SidePanel({
           </button>
         </form>
 
-        <p className="mt-4 px-4 text-[10px] leading-relaxed text-[#46506a]">
-          Click a table to focus it. Click a JSONB shape or jsonb type on a card
-          to view its schema. Double-click a table to edit columns.
+        <p className="mt-2 px-4 text-[10px] leading-relaxed text-[#5e6a85]">
+          No code needed — type a name and press Enter.
+        </p>
+
+        <p className="mt-3 px-4 text-[10px] leading-relaxed text-[#46506a]">
+          Click to focus · Edit icon or double-click to change columns · drag lines
+          for relationships.
         </p>
       </div>
     </aside>
@@ -190,10 +222,15 @@ function Section({
 function navItemClass(
   tableId: string,
   hoveredId: string | null,
-  relatedIds: Set<string>
+  relatedIds: Set<string>,
+  active?: boolean
 ): string {
   const base =
-    "mx-2 flex w-[calc(100%-16px)] cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-[opacity,background-color,color]";
+    "mx-2 flex w-[calc(100%-16px)] cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-[opacity,background-color,color,box-shadow]";
+
+  if (active) {
+    return `${base} bg-[#16203a] text-[#e8eefc] opacity-100 ring-1 ring-accent-blue/40 ring-inset`;
+  }
 
   if (!hoveredId) {
     return `${base} text-[#9aa6c2] hover:bg-[#141c2e] hover:text-ink`;
@@ -211,26 +248,31 @@ function NavItem({
   table,
   hoveredId,
   relatedIds,
+  active,
   onHover,
   onClick,
   onEdit,
+  onDelete,
 }: {
   table: ErdTable;
   hoveredId: string | null;
   relatedIds: Set<string>;
+  active?: boolean;
   onHover: () => void;
   onClick: () => void;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      onDoubleClick={onEdit}
-      onMouseEnter={onHover}
-      title="Click to focus · double-click to edit"
-      className={navItemClass(table.id, hoveredId, relatedIds)}
-    >
+    <div className="group mx-2 flex w-[calc(100%-16px)] items-center gap-1">
+      <button
+        type="button"
+        onClick={onClick}
+        onDoubleClick={onEdit}
+        onMouseEnter={onHover}
+        title="Click to focus · double-click to edit"
+        className={`${navItemClass(table.id, hoveredId, relatedIds, active)} min-w-0 flex-1`}
+      >
       <span
         className="h-2 w-2 flex-none rounded-[2px]"
         style={{
@@ -242,7 +284,28 @@ function NavItem({
       />
       <span className="flex-1 truncate font-mono">{table.name}</span>
       <span className="text-[10px] text-[#5e6a85]">{table.columns.length}</span>
-    </button>
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`Edit ${table.name}`}
+        className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-[#5e6a85] transition-colors hover:bg-[#141c2e] hover:text-ink"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={`Delete ${table.name}`}
+        className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-[#5e6a85] transition-colors hover:bg-red-500/15 hover:text-red-300"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+        </svg>
+      </button>
+    </div>
   );
 }
 

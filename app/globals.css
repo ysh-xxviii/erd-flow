@@ -114,6 +114,53 @@ body {
   opacity: 0.26;
 }
 
+/* Playbook "Go to" pulse highlight */
+@keyframes playbook-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(27, 179, 140, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(27, 179, 140, 0.15);
+  }
+}
+.react-flow__node.erd-node-playbook-highlight .erd-card {
+  border-color: #1bb38c !important;
+  animation: playbook-pulse 1.2s ease-in-out 3;
+  opacity: 1 !important;
+}
+
+.sidebar-add-table-pulse {
+  animation: playbook-pulse 1.2s ease-in-out 3;
+  border-radius: 0.375rem;
+}
+
+/* Playbook canvas guide */
+@keyframes guide-line-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.playbook-guide-line {
+  stroke: #1bb38c;
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+  animation: guide-line-flow 1s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(27, 179, 140, 0.45));
+}
+
+.react-flow__node.erd-node-playbook-guide-active .erd-card {
+  border-color: #1bb38c !important;
+  animation: playbook-pulse 1.2s ease-in-out infinite;
+  opacity: 1 !important;
+  box-shadow: 0 0 24px rgba(27, 179, 140, 0.25);
+}
+
+.react-flow__node.erd-node-playbook-guide-target .erd-card {
+  border-color: rgba(27, 179, 140, 0.55) !important;
+  opacity: 1 !important;
+}
+
 /* Edge focus / dim on card hover */
 .react-flow__edge .react-flow__edge-path {
   transition:

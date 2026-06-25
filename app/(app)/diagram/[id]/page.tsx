@@ -8,6 +8,7 @@ import type {
   ErdRelationship,
   ErdTable,
   TableCategory,
+  WorkspaceRole,
 } from "@/lib/types";
 import { ErdBuilder } from "@/components/erd/ErdBuilder";
 
@@ -31,6 +32,39 @@ export default async function DiagramPage({
     .single();
 
   if (!diagram) notFound();
+
+  const { data: membership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", diagram.workspace_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("owner_id")
+    .eq("id", diagram.workspace_id)
+    .single();
+
+  const userRole: WorkspaceRole =
+    membership?.role === "owner" || workspace?.owner_id === user.id
+      ? "owner"
+      : "member";
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const currentUser = {
+    id: user.id,
+    name:
+      profile?.full_name?.trim() ||
+      profile?.email?.split("@")[0] ||
+      user.email?.split("@")[0] ||
+      "Someone",
+  };
 
   const { data: tableRows } = await supabase
     .from("erd_tables")
@@ -78,6 +112,8 @@ export default async function DiagramPage({
       diagram={diagram as Diagram}
       initialTables={tables}
       initialRelationships={(relRows ?? []) as ErdRelationship[]}
+      userRole={userRole}
+      currentUser={currentUser}
     />
   );
 }

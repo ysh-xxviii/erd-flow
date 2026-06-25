@@ -246,3 +246,29 @@ export function computeHoverFocus(
   }
   return { relatedIds };
 }
+
+/** Pick handle sides so edges route toward the connected table, not through the card. */
+export function resolveEdgeHandles(
+  rel: {
+    source_table_id: string;
+    target_table_id: string;
+    source_col_id: string | null;
+    target_col_id: string | null;
+  },
+  tables: Pick<ErdTable, "id" | "pos_x">[]
+): { sourceHandle: string; targetHandle: string } {
+  const src = tables.find((t) => t.id === rel.source_table_id);
+  const tgt = tables.find((t) => t.id === rel.target_table_id);
+  const srcLeft = (src?.pos_x ?? 0) < (tgt?.pos_x ?? 0);
+
+  if (srcLeft) {
+    return {
+      sourceHandle: rel.source_col_id ? `s-${rel.source_col_id}` : "s-table",
+      targetHandle: rel.target_col_id ? `t-${rel.target_col_id}` : "t-table",
+    };
+  }
+  return {
+    sourceHandle: rel.source_col_id ? `s-${rel.source_col_id}-L` : "s-table-L",
+    targetHandle: rel.target_col_id ? `t-${rel.target_col_id}-R` : "t-table-R",
+  };
+}

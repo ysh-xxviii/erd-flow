@@ -28,6 +28,8 @@ export interface EntityNodeData {
   columns: ErdColumn[];
   fkRefs: Record<string, string>;
   onJsonClick?: (columnId: string) => void;
+  commentCount?: number;
+  onCommentClick?: () => void;
   [key: string]: unknown;
 }
 
@@ -107,9 +109,21 @@ function EntityNodeComponent({ data }: NodeProps) {
         style={{ top: HEADER_H / 2, opacity: 0 }}
       />
       <Handle
+        id="t-table-R"
+        type="target"
+        position={Position.Right}
+        style={{ top: HEADER_H / 2, opacity: 0 }}
+      />
+      <Handle
         id="s-table"
         type="source"
         position={Position.Right}
+        style={{ top: HEADER_H / 2, opacity: 0 }}
+      />
+      <Handle
+        id="s-table-L"
+        type="source"
+        position={Position.Left}
         style={{ top: HEADER_H / 2, opacity: 0 }}
       />
 
@@ -148,20 +162,57 @@ function EntityNodeComponent({ data }: NodeProps) {
             {d.name}
           </span>
         </div>
-        <span
-          style={{
-            fontSize: 9,
-            letterSpacing: ".5px",
-            textTransform: "uppercase",
-            color: accent,
-            background: hexToRgba(accent, 0.14),
-            padding: "2px 7px",
-            borderRadius: 4,
-            flex: "none",
-          }}
-        >
-          {tag}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+          {(d.commentCount ?? 0) > 0 && (
+            <span
+              role="button"
+              tabIndex={0}
+              title={`${d.commentCount} open comment${d.commentCount === 1 ? "" : "s"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                d.onCommentClick?.();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  d.onCommentClick?.();
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                fontSize: 9.5,
+                fontWeight: 600,
+                color: "#e3b341",
+                background: "rgba(227,179,65,0.16)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#e3b341" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              {d.commentCount}
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: 9,
+              letterSpacing: ".5px",
+              textTransform: "uppercase",
+              color: accent,
+              background: hexToRgba(accent, 0.14),
+              padding: "2px 7px",
+              borderRadius: 4,
+              flex: "none",
+            }}
+          >
+            {tag}
+          </span>
+        </div>
       </div>
 
       {hasDesc && (
@@ -189,14 +240,13 @@ function EntityNodeComponent({ data }: NodeProps) {
           No columns yet
         </div>
       )}
-      {d.columns.map((c, i) => (
+      {d.columns.map((c) => (
         <ColumnRow
           key={c.id}
           col={c}
           accent={accent}
           isEnum={isEnum}
           fkRef={d.fkRefs[c.id]}
-          top={HEADER_H + descOffset + i * ROW_H + ROW_H / 2}
           onJsonClick={d.onJsonClick}
         />
       ))}
@@ -233,19 +283,19 @@ function EntityNodeComponent({ data }: NodeProps) {
   );
 }
 
+const handleCenter = { top: "50%", transform: "translateY(-50%)" } as const;
+
 function ColumnRow({
   col,
   accent,
   isEnum,
   fkRef,
-  top,
   onJsonClick,
 }: {
   col: ErdColumn;
   accent: string;
   isEnum: boolean;
   fkRef?: string;
-  top: number;
   onJsonClick?: (columnId: string) => void;
 }) {
   const icon = isEnum ? "" : col.is_pk ? "◆" : col.is_fk ? "◇" : "";
@@ -280,14 +330,28 @@ function ColumnRow({
         id={`t-${col.id}`}
         type="target"
         position={Position.Left}
-        style={{ top, background: SCHEMA_COLORS.fk }}
+        style={{ ...handleCenter, background: SCHEMA_COLORS.fk }}
+        className="erd-col-handle"
+      />
+      <Handle
+        id={`t-${col.id}-R`}
+        type="target"
+        position={Position.Right}
+        style={{ ...handleCenter, background: SCHEMA_COLORS.fk }}
         className="erd-col-handle"
       />
       <Handle
         id={`s-${col.id}`}
         type="source"
         position={Position.Right}
-        style={{ top, background: accent }}
+        style={{ ...handleCenter, background: accent }}
+        className="erd-col-handle"
+      />
+      <Handle
+        id={`s-${col.id}-L`}
+        type="source"
+        position={Position.Left}
+        style={{ ...handleCenter, background: accent }}
         className="erd-col-handle"
       />
 

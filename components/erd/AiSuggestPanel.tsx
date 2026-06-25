@@ -8,9 +8,11 @@ import {
   tableColorHex,
   type ErdTable,
   type SchemaSnapshot,
+  type SuggestedColumn,
   type SuggestedTable,
   type TableCategory,
 } from "@/lib/types";
+import { COLUMN_TYPES } from "./useErd";
 
 export function AiSuggestPanel({
   tables,
@@ -27,11 +29,80 @@ export function AiSuggestPanel({
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedTable[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [expandedPreview, setExpandedPreview] = useState<string | null>(null);
+  const [customizing, setCustomizing] = useState<string | null>(null);
+
+  const busy = loading || applying;
+  const step = suggestions.length === 0 ? 1 : 2;
+
+  function updateSuggestion(name: string, patch: Partial<SuggestedTable>) {
+    setSuggestions((prev) =>
+      prev.map((s) => (s.name === name ? { ...s, ...patch } : s))
+    );
+    if (patch.name && patch.name !== name) {
+      setChecked((c) => {
+        const next = { ...c };
+        next[patch.name!] = next[name] ?? true;
+        delete next[name];
+        return next;
+      });
+      setExpandedPreview((e) => (e === name ? patch.name! : e));
+      setCustomizing((c) => (c === name ? patch.name! : c));
+    }
+  }
+
+  function updateColumn(
+    tableName: string,
+    colIndex: number,
+    patch: Partial<SuggestedColumn>
+  ) {
+    setSuggestions((prev) =>
+      prev.map((s) => {
+        if (s.name !== tableName) return s;
+        return {
+          ...s,
+          columns: s.columns.map((c, i) =>
+            i === colIndex ? { ...c, ...patch } : c
+          ),
+        };
+      })
+    );
+  }
+
+  function addColumn(tableName: string) {
+    setSuggestions((prev) =>
+      prev.map((s) => {
+        if (s.name !== tableName) return s;
+        const n = s.columns.length + 1;
+        return {
+          ...s,
+          columns: [
+            ...s.columns,
+            { name: `column_${n}`, data_type: "text", is_nullable: true },
+          ],
+        };
+      })
+    );
+  }
+
+  function removeColumn(tableName: string, colIndex: number) {
+    setSuggestions((prev) =>
+      prev.map((s) => {
+        if (s.name !== tableName) return s;
+        return {
+          ...s,
+          columns: s.columns.filter((_, i) => i !== colIndex),
+        };
+      })
+    );
+  }
 
   async function generate() {
     setLoading(true);
     setError(null);
     setSuggestions([]);
+    setExpandedPreview(null);
+    setCustomizing(null);
 
     const schema: SchemaSnapshot = {
       tables: tables.map((t) => ({
@@ -71,6 +142,7 @@ export function AiSuggestPanel({
     const selected = suggestions.filter((s) => checked[s.name]);
     if (selected.length === 0) return;
     setApplying(true);
+    setCustomizing(null);
     try {
       await onApply(selected);
     } finally {
@@ -86,59 +158,163 @@ export function AiSuggestPanel({
         type="button"
         aria-label="Close AI panel"
         onClick={onClose}
-        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm"
+        disabled={applying}
+        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm disabled:cursor-not-allowed"
       />
-      <aside className="flex h-full w-full max-w-md flex-col border-l border-border-subtle bg-surface shadow-2xl">
-        <header className="flex items-center justify-between border-b border-border-subtle p-4">
-          <div className="flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b7bff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" />
-              <path d="M19 14v4M21 16h-4" />
-            </svg>
-            <h2 className="text-base font-semibold text-ink">
-              AI Table Suggestions
-            </h2>
+
+      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-border-subtle bg-surface shadow-2xl">
+        {applying && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-surface/90 backdrop-blur-sm">
+            <div className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-accent-purple border-t-transparent" />
+            <p className="text-sm font-medium text-ink">
+              Adding {selectedCount} table{selectedCount === 1 ? "" : "s"}…
+            </p>
+            <p className="mt-1 text-xs text-ink-faint">
+              Layout and JSON shapes are generated next
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+        )}
+
+        <header className="border-b border-border-subtle p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b7bff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" />
+              </svg>
+              <h2 className="text-base font-semibold text-ink">AI Suggest</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={applying}
+              aria-label="Close"
+              className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink disabled:opacity-50"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-2 text-[10px]">
+            <StepChip n={1} label="Describe" active={step === 1} done={step > 1} />
+            <StepChip n={2} label="Review" active={step === 2} done={false} />
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <label
-            htmlFor="ai-desc"
-            className="mb-1.5 block text-sm font-medium text-ink"
-          >
-            Describe your app (optional)
-          </label>
-          <textarea
-            id="ai-desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="e.g. A SaaS project management tool with teams, projects, tasks and comments"
-            className="w-full resize-none rounded-lg border border-border-subtle bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent-purple focus:outline-none"
-          />
-          <p className="mt-1.5 text-xs text-ink-faint">
-            We&apos;ll consider your {tables.length} existing table
-            {tables.length === 1 ? "" : "s"} and suggest related ones.
-          </p>
+          {step === 1 && (
+            <>
+              <label htmlFor="ai-desc" className="mb-1.5 block text-sm font-medium text-ink">
+                What are you building?
+              </label>
+              <textarea
+                id="ai-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                disabled={busy}
+                placeholder="e.g. Social media manager with users, personas, posts, and analytics"
+                className="w-full resize-none rounded-lg border border-border-subtle bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent-purple focus:outline-none disabled:opacity-60"
+              />
+              <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+                AI will suggest a full schema. You review it first, then add to
+                the canvas. Edit tables on the canvas after they&apos;re added.
+              </p>
+              <button
+                type="button"
+                onClick={generate}
+                disabled={busy}
+                className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent-purple px-4 py-2.5 text-sm font-semibold text-canvas transition-colors hover:bg-[#a294ff] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Generating schema…" : "Generate schema"}
+              </button>
+            </>
+          )}
 
-          <button
-            type="button"
-            onClick={generate}
-            disabled={loading}
-            className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent-purple px-4 py-2.5 text-sm font-semibold text-canvas transition-colors hover:bg-[#a294ff] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Thinking…" : "Generate suggestions"}
-          </button>
+          {step === 2 && (
+            <>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-xs text-ink-muted">
+                  {selectedCount} of {suggestions.length} selected
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setSuggestions([]);
+                    setExpandedPreview(null);
+                    setCustomizing(null);
+                  }}
+                  className="cursor-pointer text-xs text-accent-purple hover:underline disabled:opacity-50"
+                >
+                  Start over
+                </button>
+              </div>
+
+              {(() => {
+                const groups: { label: string; cat: TableCategory }[] = [
+                  { label: "Core domain", cat: "core" },
+                  { label: "Enums", cat: "enum" },
+                  { label: "Framework / infra", cat: "framework" },
+                ];
+                return (
+                  <div className="space-y-5">
+                    {groups.map(({ label, cat }) => {
+                      const items = suggestions.filter(
+                        (s) => (s.category ?? "core") === cat
+                      );
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat}>
+                          <div className="mb-1.5 text-[10px] uppercase tracking-[1.5px] text-ink-faint">
+                            {label}
+                          </div>
+                          <ul className="space-y-2">
+                            {items.map((s, i) => (
+                              <SuggestionCard
+                                key={s.name}
+                                s={s}
+                                accent={tableColorHex({
+                                  color: ACCENT_ORDER[i % ACCENT_ORDER.length],
+                                  category: (s.category ?? "core") as TableCategory,
+                                })}
+                                checked={!!checked[s.name]}
+                                previewOpen={expandedPreview === s.name}
+                                customizing={customizing === s.name}
+                                disabled={busy}
+                                onToggle={(v) =>
+                                  setChecked((c) => ({ ...c, [s.name]: v }))
+                                }
+                                onTogglePreview={() =>
+                                  setExpandedPreview((e) =>
+                                    e === s.name ? null : s.name
+                                  )
+                                }
+                                onStartCustomize={() => {
+                                  setCustomizing(s.name);
+                                  setExpandedPreview(s.name);
+                                }}
+                                onDoneCustomize={() => setCustomizing(null)}
+                                onUpdateTable={(patch) =>
+                                  updateSuggestion(s.name, patch)
+                                }
+                                onUpdateColumn={(colIndex, patch) =>
+                                  updateColumn(s.name, colIndex, patch)
+                                }
+                                onAddColumn={() => addColumn(s.name)}
+                                onRemoveColumn={(colIndex) =>
+                                  removeColumn(s.name, colIndex)
+                                }
+                              />
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </>
+          )}
 
           {error && (
             <p
@@ -148,64 +324,21 @@ export function AiSuggestPanel({
               {error}
             </p>
           )}
-
-          {suggestions.length > 0 &&
-            (() => {
-              const groups: { label: string; cat: TableCategory }[] = [
-                { label: "Core domain", cat: "core" },
-                { label: "Enums", cat: "enum" },
-                { label: "Framework / infra", cat: "framework" },
-              ];
-              return (
-                <div className="mt-4 space-y-5">
-                  {groups.map(({ label, cat }) => {
-                    const items = suggestions.filter(
-                      (s) => (s.category ?? "core") === cat
-                    );
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={cat}>
-                        <div className="mb-1.5 text-[10px] uppercase tracking-[1.5px] text-ink-faint">
-                          {label}
-                          <span className="ml-1.5 text-ink-faint/60">
-                            {items.length}
-                          </span>
-                        </div>
-                        <ul className="space-y-2.5">
-                          {items.map((s, i) => (
-                            <SuggestionCard
-                              key={s.name}
-                              s={s}
-                              accent={tableColorHex({
-                                color: ACCENT_ORDER[i % ACCENT_ORDER.length],
-                                category: (s.category ?? "core") as TableCategory,
-                              })}
-                              checked={!!checked[s.name]}
-                              onToggle={(v) =>
-                                setChecked((c) => ({ ...c, [s.name]: v }))
-                              }
-                            />
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
         </div>
 
         {suggestions.length > 0 && (
-          <footer className="border-t border-border-subtle p-4">
+          <footer className="border-t border-border-subtle bg-canvas/40 p-4">
+            <p className="mb-3 text-[11px] leading-relaxed text-ink-faint">
+              Happy with the preview? Add to canvas, then double-click any table
+              to edit columns and relationships.
+            </p>
             <button
               type="button"
               onClick={apply}
-              disabled={applying || selectedCount === 0}
+              disabled={busy || selectedCount === 0}
               className="flex w-full cursor-pointer items-center justify-center rounded-lg bg-accent-blue px-4 py-2.5 text-sm font-semibold text-canvas transition-colors hover:bg-[#79b6ff] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {applying
-                ? "Adding…"
-                : `Add ${selectedCount} table${selectedCount === 1 ? "" : "s"} to canvas`}
+              Add {selectedCount} table{selectedCount === 1 ? "" : "s"} to canvas
             </button>
           </footer>
         )}
@@ -214,41 +347,93 @@ export function AiSuggestPanel({
   );
 }
 
+function StepChip({
+  n,
+  label,
+  active,
+  done,
+}: {
+  n: number;
+  label: string;
+  active: boolean;
+  done: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
+        active
+          ? "bg-accent-purple/15 text-accent-purple"
+          : done
+            ? "bg-accent-green/10 text-accent-green"
+            : "bg-card text-ink-faint"
+      }`}
+    >
+      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-black/20 text-[9px] font-bold">
+        {done ? "✓" : n}
+      </span>
+      <span className="font-medium">{label}</span>
+    </div>
+  );
+}
+
 function SuggestionCard({
   s,
   accent,
   checked,
+  previewOpen,
+  customizing,
+  disabled,
   onToggle,
+  onTogglePreview,
+  onStartCustomize,
+  onDoneCustomize,
+  onUpdateTable,
+  onUpdateColumn,
+  onAddColumn,
+  onRemoveColumn,
 }: {
   s: SuggestedTable;
   accent: string;
   checked: boolean;
+  previewOpen: boolean;
+  customizing: boolean;
+  disabled: boolean;
   onToggle: (v: boolean) => void;
+  onTogglePreview: () => void;
+  onStartCustomize: () => void;
+  onDoneCustomize: () => void;
+  onUpdateTable: (patch: Partial<SuggestedTable>) => void;
+  onUpdateColumn: (colIndex: number, patch: Partial<SuggestedColumn>) => void;
+  onAddColumn: () => void;
+  onRemoveColumn: (colIndex: number) => void;
 }) {
   const category = (s.category ?? "core") as TableCategory;
+
   return (
     <li
-      className="rounded-xl border bg-card p-3 transition-colors"
-      style={{ borderColor: checked ? `${accent}88` : "#1f2940" }}
+      className="overflow-hidden rounded-xl border bg-card transition-colors"
+      style={{ borderColor: checked ? `${accent}66` : "#1f2940" }}
     >
-      <label className="flex cursor-pointer items-start gap-2.5">
+      {/* Preview header — read only */}
+      <div className="flex items-start gap-2.5 p-3">
         <input
           type="checkbox"
           checked={checked}
+          disabled={disabled}
           onChange={(e) => onToggle(e.target.checked)}
-          className="mt-0.5 h-4 w-4 cursor-pointer accent-accent-purple"
+          className="mt-1 h-4 w-4 cursor-pointer accent-accent-purple disabled:cursor-not-allowed"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span
-              className="h-2.5 w-2.5 rounded-full"
+              className="h-2 w-2 flex-none rounded-full"
               style={{ background: accent }}
             />
             <span className="truncate font-mono text-sm font-semibold text-ink">
               {s.name}
             </span>
             <span
-              className="ml-auto rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide"
+              className="ml-auto flex-none rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide"
               style={{ color: accent, background: `${accent}22` }}
             >
               {categoryTag(category)}
@@ -257,78 +442,203 @@ function SuggestionCard({
           {s.reason && (
             <p className="mt-1 text-xs text-ink-muted">{s.reason}</p>
           )}
-          {s.description && (
-            <p className="mt-1 text-[11px] italic text-ink-faint">
-              {s.description}
-            </p>
-          )}
+          <p className="mt-1 text-[11px] text-ink-faint">
+            {s.columns.length} columns
+            {s.relationships?.length
+              ? ` · ${s.relationships.length} relationships`
+              : ""}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onTogglePreview}
+              className="cursor-pointer text-[11px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+            >
+              {previewOpen ? "Hide preview" : "Preview columns"}
+            </button>
+            {!customizing && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={onStartCustomize}
+                className="cursor-pointer text-[11px] font-medium text-accent-purple transition-colors hover:text-[#a294ff] disabled:opacity-50"
+              >
+                Adjust before adding →
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
-          <div className="mt-2 overflow-hidden rounded-lg border border-border-subtle">
-            {s.columns.map((c) => (
+      {/* Read-only column preview */}
+      {previewOpen && !customizing && (
+        <div className="border-t border-border-subtle/60 bg-canvas/40 px-3 py-2">
+          {s.description && (
+            <p className="mb-2 text-[11px] italic text-ink-faint">{s.description}</p>
+          )}
+          <div className="overflow-hidden rounded-lg border border-border-subtle">
+            {s.columns.map((c, i) => (
               <div
-                key={c.name}
+                key={`${c.name}-${i}`}
                 className="flex items-center gap-2 border-b border-border-subtle/60 px-2 py-1 font-mono text-[11px] last:border-b-0"
               >
-                <span className="w-6 flex-none">
+                <span className="w-4 flex-none text-center">
                   {category !== "enum" && c.is_pk ? (
                     <span style={{ color: SCHEMA_COLORS.pk }}>◆</span>
                   ) : category !== "enum" && c.is_fk ? (
                     <span style={{ color: SCHEMA_COLORS.fk }}>◇</span>
                   ) : null}
                 </span>
-                <span className="flex-1 truncate text-ink">
-                  {c.name}
-                  {category !== "enum" && c.is_nullable ? (
-                    <span className="text-ink-faint">?</span>
-                  ) : null}
-                </span>
-                <span className="flex flex-none items-center gap-1.5">
-                  {c.label && (
-                    <span className="text-ink-faint">{c.label}</span>
-                  )}
-                  <span style={{ color: SCHEMA_COLORS.type }}>{c.data_type}</span>
-                  {c.default_value && (
-                    <span className="text-ink-faint">{c.default_value}</span>
-                  )}
-                </span>
+                <span className="flex-1 truncate text-ink">{c.name}</span>
+                <span style={{ color: SCHEMA_COLORS.type }}>{c.data_type}</span>
               </div>
             ))}
           </div>
-
-          {s.constraints && s.constraints.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {s.constraints.map((c) => (
-                <span
-                  key={`${c.kind}-${c.columns.join("-")}`}
-                  className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint"
-                >
-                  {c.kind === "unique" ? "UQ" : "IDX"} ({c.columns.join(", ")})
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* relationships */}
-          {s.relationships && s.relationships.length > 0 && (
-            <div className="mt-2 space-y-0.5">
-              {s.relationships.map((r, i) => (
-                <p
-                  key={`${r.to_table}-${r.from_column}-${i}`}
-                  className="font-mono text-[10.5px] text-ink-faint"
-                >
-                  <span style={{ color: SCHEMA_COLORS.fk }}>
-                    {r.from_column}
-                  </span>{" "}
-                  → {r.to_table}
-                  <span className="ml-1 text-ink-faint/70">
-                    ({r.cardinality})
-                  </span>
-                </p>
-              ))}
-            </div>
-          )}
         </div>
-      </label>
+      )}
+
+      {/* Customize panel — clearly separated */}
+      {customizing && (
+        <div className="border-t border-accent-purple/30 bg-accent-purple/5 px-3 py-3">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-accent-purple">
+              Adjust before adding
+            </span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onDoneCustomize}
+              className="cursor-pointer rounded-md bg-accent-purple/15 px-2 py-0.5 text-[11px] font-semibold text-accent-purple hover:bg-accent-purple/25 disabled:opacity-50"
+            >
+              Done
+            </button>
+          </div>
+
+          <label className="mb-1 block text-[10px] uppercase tracking-wide text-ink-faint">
+            Table name
+          </label>
+          <input
+            value={s.name}
+            disabled={disabled}
+            onChange={(e) => onUpdateTable({ name: e.target.value })}
+            className="mb-3 w-full rounded-md border border-border-subtle bg-canvas px-2 py-1.5 font-mono text-sm text-ink focus:border-accent-purple focus:outline-none disabled:opacity-60"
+          />
+
+          <label className="mb-1 block text-[10px] uppercase tracking-wide text-ink-faint">
+            Description
+          </label>
+          <textarea
+            value={s.description ?? ""}
+            disabled={disabled}
+            onChange={(e) => onUpdateTable({ description: e.target.value })}
+            rows={2}
+            className="mb-3 w-full resize-none rounded-md border border-border-subtle bg-canvas px-2 py-1.5 text-[11px] text-ink focus:border-accent-purple focus:outline-none disabled:opacity-60"
+          />
+
+          <label className="mb-1 block text-[10px] uppercase tracking-wide text-ink-faint">
+            Columns
+          </label>
+          <div className="overflow-hidden rounded-lg border border-border-subtle">
+            {s.columns.map((c, colIndex) => (
+              <div
+                key={`${c.name}-${colIndex}`}
+                className="flex flex-wrap items-center gap-1.5 border-b border-border-subtle/60 px-2 py-1.5 last:border-b-0"
+              >
+                <input
+                  value={c.name}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    onUpdateColumn(colIndex, { name: e.target.value })
+                  }
+                  className="min-w-[80px] flex-1 rounded border border-border-subtle bg-surface px-1.5 py-0.5 font-mono text-[11px] focus:border-accent-purple focus:outline-none disabled:opacity-60"
+                />
+                <select
+                  value={c.data_type}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    onUpdateColumn(colIndex, { data_type: e.target.value })
+                  }
+                  className="cursor-pointer rounded border border-border-subtle bg-surface px-1 py-0.5 font-mono text-[10px] disabled:opacity-60"
+                >
+                  {COLUMN_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                {category !== "enum" && (
+                  <>
+                    <ToggleChip
+                      label="PK"
+                      active={!!c.is_pk}
+                      disabled={disabled}
+                      onClick={() =>
+                        onUpdateColumn(colIndex, {
+                          is_pk: !c.is_pk,
+                          is_nullable: c.is_pk ? c.is_nullable : false,
+                        })
+                      }
+                    />
+                    <ToggleChip
+                      label="FK"
+                      active={!!c.is_fk}
+                      disabled={disabled}
+                      onClick={() =>
+                        onUpdateColumn(colIndex, { is_fk: !c.is_fk })
+                      }
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`Remove ${c.name}`}
+                  onClick={() => onRemoveColumn(colIndex)}
+                  className="cursor-pointer px-1 text-ink-faint hover:text-red-300 disabled:opacity-50"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onAddColumn}
+            className="mt-2 cursor-pointer text-[11px] font-medium text-accent-blue hover:underline disabled:opacity-50"
+          >
+            + Add column
+          </button>
+        </div>
+      )}
     </li>
+  );
+}
+
+function ToggleChip({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`cursor-pointer rounded px-1.5 py-0.5 text-[9px] font-bold disabled:opacity-50 ${
+        active
+          ? "bg-accent-blue/20 text-accent-blue"
+          : "bg-surface text-ink-faint"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

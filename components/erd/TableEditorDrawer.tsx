@@ -24,24 +24,32 @@ const CARDINALITIES: Cardinality[] = [
 
 export function TableEditorDrawer({
   erd,
-  table,
+  tableId,
   onClose,
 }: {
   erd: Erd;
-  table: ErdTable;
+  tableId: string;
   onClose: () => void;
 }) {
+  const table = erd.tables.find((t) => t.id === tableId);
+  if (!table) return null;
+
   return (
     <aside className="flex h-full w-[380px] flex-none flex-col border-l border-[#1d2740] bg-[#0c111c]">
       <div className="flex h-12 flex-none items-center justify-between border-b border-[#1d2740] px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="h-2.5 w-2.5 flex-none rounded-[3px]"
-            style={{ background: ACCENT_HEX[table.color] }}
-          />
-          <span className="truncate font-mono text-[13px] font-semibold text-ink">
-            {table.name}
-          </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className="h-2.5 w-2.5 flex-none rounded-[3px]"
+              style={{ background: ACCENT_HEX[table.color] }}
+            />
+            <span className="truncate font-mono text-[13px] font-semibold text-ink">
+              {table.name}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] text-[#5e6a85]">
+            Changes save automatically
+          </p>
         </div>
         <button
           type="button"
