@@ -11,6 +11,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useStoreApi,
   useViewport,
   type Connection,
   type Edge,
@@ -69,11 +70,33 @@ function FitViewOnLoad({
   disabled: boolean;
 }) {
   const { fitView } = useReactFlow();
+  const store = useStoreApi();
+
   useEffect(() => {
     if (disabled || tableCount === 0) return;
     const t = setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 50);
     return () => clearTimeout(t);
   }, [diagramId, tableCount, disabled, fitView]);
+
+  useEffect(() => {
+    if (disabled || tableCount === 0) return;
+    const domNode = store.getState().domNode;
+    if (!domNode) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fitView({ padding: 0.2, duration: 250 });
+      }, 150);
+    });
+    ro.observe(domNode);
+    return () => {
+      ro.disconnect();
+      clearTimeout(timer);
+    };
+  }, [diagramId, tableCount, disabled, fitView, store]);
+
   return null;
 }
 
@@ -499,7 +522,7 @@ function ErdBuilderInner({
         pulseAddTable={pulseAddTable}
       />
 
-      <div className="relative flex-1">
+      <div className="relative min-w-0 flex-1 overflow-hidden">
         {/* top-left: back + saving */}
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
           <Link
@@ -601,6 +624,7 @@ function ErdBuilderInner({
         </div>
 
         <ReactFlow
+          className="h-full w-full"
           nodes={displayNodes}
           edges={displayEdges}
           onNodesChange={onNodesChange}

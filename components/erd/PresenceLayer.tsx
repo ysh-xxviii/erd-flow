@@ -1,7 +1,7 @@
 "use client";
 
-import { useReactFlow, useViewport } from "@xyflow/react";
 import type { PeerCursor, PresencePeer } from "@/lib/usePresence";
+import { useFlowToOverlayPosition } from "@/lib/flowCoords";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -11,15 +11,14 @@ function initials(name: string): string {
 
 /** Renders remote collaborators' live cursors over the canvas. */
 export function PresenceCursors({ cursors }: { cursors: Record<string, PeerCursor> }) {
-  const { flowToScreenPosition } = useReactFlow();
-  useViewport(); // re-render on pan/zoom so screen positions stay correct
+  const flowToOverlay = useFlowToOverlayPosition();
   const list = Object.values(cursors);
   if (list.length === 0) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
       {list.map((c) => {
-        const p = flowToScreenPosition({ x: c.x, y: c.y });
+        const p = flowToOverlay({ x: c.x, y: c.y });
         return (
           <div
             key={c.userId}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useReactFlow, useViewport } from "@xyflow/react";
 import type { ErdTable } from "@/lib/types";
 import type { GuidePhase, PlaybookGuide } from "@/lib/playbookGuide";
+import { useFlowToOverlayPosition } from "@/lib/flowCoords";
 import { NODE_W, nodeHeight } from "./EntityNode";
 
 function tableCenter(t: ErdTable): { x: number; y: number } {
@@ -28,7 +29,7 @@ export function PlaybookGuideOverlay({
   onDismiss: () => void;
   onPulseAddTable: (active: boolean) => void;
 }) {
-  const { flowToScreenPosition } = useReactFlow();
+  const flowToOverlay = useFlowToOverlayPosition();
   const phase = guide.phases[phaseIndex];
   const total = guide.phases.length;
 
@@ -49,12 +50,6 @@ export function PlaybookGuideOverlay({
     return () => clearTimeout(timer);
   }, [phase, phaseIndex, total, onPhaseChange, onDismiss]);
 
-  const toScreen = useCallback(
-    (flowX: number, flowY: number) =>
-      flowToScreenPosition({ x: flowX, y: flowY }),
-    [flowToScreenPosition]
-  );
-
   const linePath = useMemo(() => {
     if (!phase?.line) return null;
     const from = tables.find((t) => t.id === phase.line!.fromTableId);
@@ -62,10 +57,10 @@ export function PlaybookGuideOverlay({
     if (!from || !to) return null;
     const a = tableCenter(from);
     const b = tableCenter(to);
-    const sa = toScreen(a.x, a.y);
-    const sb = toScreen(b.x, b.y);
+    const sa = flowToOverlay(a);
+    const sb = flowToOverlay(b);
     return { x1: sa.x, y1: sa.y, x2: sb.x, y2: sb.y };
-  }, [phase, tables, toScreen]);
+  }, [phase, tables, flowToOverlay]);
 
   if (!phase) return null;
 
