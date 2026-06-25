@@ -114,6 +114,13 @@ body {
   opacity: 0.26;
 }
 
+/* Remote collaborator hover target */
+.react-flow__node.erd-node-remote-hover .erd-card {
+  outline: 2px dashed #5aa6ff;
+  outline-offset: 2px;
+  opacity: 1 !important;
+}
+
 /* Playbook "Go to" pulse highlight */
 @keyframes playbook-pulse {
   0%,

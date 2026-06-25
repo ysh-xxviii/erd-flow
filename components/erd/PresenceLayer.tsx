@@ -1,6 +1,6 @@
 "use client";
 
-import { useReactFlow } from "@xyflow/react";
+import { useReactFlow, useViewport } from "@xyflow/react";
 import type { PeerCursor, PresencePeer } from "@/lib/usePresence";
 
 function initials(name: string): string {
@@ -12,6 +12,7 @@ function initials(name: string): string {
 /** Renders remote collaborators' live cursors over the canvas. */
 export function PresenceCursors({ cursors }: { cursors: Record<string, PeerCursor> }) {
   const { flowToScreenPosition } = useReactFlow();
+  useViewport(); // re-render on pan/zoom so screen positions stay correct
   const list = Object.values(cursors);
   if (list.length === 0) return null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ReactFlow,
@@ -59,6 +59,24 @@ function parseColHandle(handle: string | null | undefined): string | null {
   return handle.slice(2); // strip "s-" / "t-"
 }
 
+function FitViewOnLoad({
+  diagramId,
+  tableCount,
+  disabled,
+}: {
+  diagramId: string;
+  tableCount: number;
+  disabled: boolean;
+}) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (disabled || tableCount === 0) return;
+    const t = setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 50);
+    return () => clearTimeout(t);
+  }, [diagramId, tableCount, disabled, fitView]);
+  return null;
+}
+
 function ErdBuilderInner({
   diagram,
   initialTables,
@@ -84,14 +102,6 @@ function ErdBuilderInner({
     useReactFlow();
   const { zoom } = useViewport();
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      const flow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      sendCursor(flow.x, flow.y);
-    },
-    [screenToFlowPosition, sendCursor]
-  );
-
   const [selectedTableId, setSelectedTableId] = useState<string | null>(
     initialTables[0]?.id ?? null
   );
@@ -115,6 +125,24 @@ function ErdBuilderInner({
   const [showFirstVisitHint, setShowFirstVisitHint] = useState(false);
   const [applyNotice, setApplyNotice] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hoveredIdRef = useRef(hoveredId);
+  hoveredIdRef.current = hoveredId;
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const flow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      sendCursor(flow.x, flow.y, hoveredIdRef.current);
+    },
+    [screenToFlowPosition, sendCursor]
+  );
+
+  const remoteHoverIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of Object.values(cursors)) {
+      if (c.tableId) ids.add(c.tableId);
+    }
+    return ids;
+  }, [cursors]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -326,21 +354,35 @@ function ErdBuilderInner({
           );
           return { ...n, className, zIndex };
         }
-        if (!hoveredId) {
-          return { ...n, className: "", zIndex: 2 };
+
+        let className = "";
+        let zIndex = 2;
+
+        if (hoveredId) {
+          const isActive = n.id === hoveredId;
+          const isRelated = relatedIds.has(n.id);
+          className = "erd-node-dim";
+          if (isActive) {
+            className = "erd-node-active";
+            zIndex = 10;
+          } else if (isRelated) {
+            className = "erd-node-related";
+            zIndex = 4;
+          } else {
+            zIndex = 1;
+          }
         }
-        const isActive = n.id === hoveredId;
-        const isRelated = relatedIds.has(n.id);
-        let className = "erd-node-dim";
-        if (isActive) className = "erd-node-active";
-        else if (isRelated) className = "erd-node-related";
-        return {
-          ...n,
-          className,
-          zIndex: isActive ? 10 : isRelated ? 4 : 1,
-        };
+
+        if (remoteHoverIds.has(n.id) && n.id !== hoveredId) {
+          className = className
+            ? `${className} erd-node-remote-hover`
+            : "erd-node-remote-hover";
+          if (zIndex < 6) zIndex = 6;
+        }
+
+        return { ...n, className, zIndex };
       }),
-    [nodes, hoveredId, relatedIds, activeGuide, currentGuidePhase]
+    [nodes, hoveredId, relatedIds, activeGuide, currentGuidePhase, remoteHoverIds]
   );
 
   const displayEdges = useMemo(
@@ -440,7 +482,7 @@ function ErdBuilderInner({
         pulseAddTable={pulseAddTable}
       />
 
-      <div className="relative flex-1" onPointerMove={onPointerMove}>
+      <div className="relative flex-1">
         {/* top-left: back + saving */}
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
           <Link
@@ -555,8 +597,8 @@ function ErdBuilderInner({
             focusTable(node.id);
           }}
           onNodeDoubleClick={(_, node) => openTableEditor(node.id)}
+          onPointerMove={onPointerMove}
           nodeTypes={nodeTypes}
-          fitView
           minZoom={0.2}
           maxZoom={2.2}
           proOptions={{ hideAttribution: true }}
@@ -567,6 +609,11 @@ function ErdBuilderInner({
             gap={26}
             size={1}
             color="rgba(255,255,255,0.06)"
+          />
+          <FitViewOnLoad
+            diagramId={diagram.id}
+            tableCount={tables.length}
+            disabled={!!activeGuide}
           />
         </ReactFlow>
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/user";
 import type {
   Diagram,
   Workspace,
@@ -19,18 +20,14 @@ export default async function DashboardPage({
   const { ws } = await searchParams;
   const supabase = await createClient();
 
-  // Auto-accept any invites addressed to this user's email before loading.
-  // Call the RPC directly (server actions can't revalidate during render).
-  await supabase.rpc("accept_pending_invites");
+  // Auto-accept any invites addressed to this user's email. Kicked off now and
+  // awaited later so it overlaps with the reads instead of blocking them.
+  const acceptInvites = supabase.rpc("accept_pending_invites");
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: workspaces } = await supabase
-    .from("workspaces")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const [user, { data: workspaces }] = await Promise.all([
+    getCurrentUser(),
+    supabase.from("workspaces").select("*").order("created_at", { ascending: true }),
+  ]);
 
   const list = (workspaces ?? []) as Workspace[];
   const activeWorkspace =
@@ -42,16 +39,15 @@ export default async function DashboardPage({
   let isOwner = false;
 
   if (activeWorkspace) {
-    const { data } = await supabase
-      .from("diagrams")
-      .select("*")
-      .eq("workspace_id", activeWorkspace.id)
-      .order("updated_at", { ascending: false });
-    diagrams = (data ?? []) as Diagram[];
-
-    const { data: memberRows } = await supabase.rpc("list_workspace_members", {
-      ws: activeWorkspace.id,
-    });
+    const [{ data: diagramRows }, { data: memberRows }] = await Promise.all([
+      supabase
+        .from("diagrams")
+        .select("*")
+        .eq("workspace_id", activeWorkspace.id)
+        .order("updated_at", { ascending: false }),
+      supabase.rpc("list_workspace_members", { ws: activeWorkspace.id }),
+    ]);
+    diagrams = (diagramRows ?? []) as Diagram[];
     members = (memberRows ?? []) as WorkspaceMemberInfo[];
 
     isOwner =
@@ -68,6 +64,9 @@ export default async function DashboardPage({
       invites = (inviteRows ?? []) as WorkspaceInvite[];
     }
   }
+
+  // Ensure the overlapped invite-accept write completes before rendering.
+  await acceptInvites;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">

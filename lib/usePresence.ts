@@ -15,6 +15,7 @@ export interface PeerCursor {
   color: string;
   x: number; // flow coords
   y: number;
+  tableId: string | null;
   updatedAt: number;
 }
 
@@ -83,13 +84,24 @@ export function usePresence(
         "broadcast",
         { event: "cursor" },
         (payload: {
-          payload: { userId: string; name: string; color: string; x: number; y: number };
+          payload: {
+            userId: string;
+            name: string;
+            color: string;
+            x: number;
+            y: number;
+            tableId?: string | null;
+          };
         }) => {
           const c = payload.payload;
           if (c.userId === currentUser.id) return;
           setCursors((prev) => ({
             ...prev,
-            [c.userId]: { ...c, updatedAt: Date.now() },
+            [c.userId]: {
+              ...c,
+              tableId: c.tableId ?? null,
+              updatedAt: Date.now(),
+            },
           }));
         }
       )
@@ -143,7 +155,7 @@ export function usePresence(
   }, []);
 
   const sendCursor = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, tableId: string | null) => {
       const now = Date.now();
       if (now - lastSent.current < 45) return;
       lastSent.current = now;
@@ -152,7 +164,14 @@ export function usePresence(
       void channel.send({
         type: "broadcast",
         event: "cursor",
-        payload: { userId: currentUser.id, name: currentUser.name, color, x, y },
+        payload: {
+          userId: currentUser.id,
+          name: currentUser.name,
+          color,
+          x,
+          y,
+          tableId,
+        },
       });
     },
     [currentUser.id, currentUser.name, color]

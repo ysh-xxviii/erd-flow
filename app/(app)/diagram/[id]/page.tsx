@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/user";
 import { castConstraints } from "@/lib/erdLayout";
 import type {
   AccentColor,
@@ -20,9 +21,7 @@ export default async function DiagramPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const { data: diagram } = await supabase
@@ -33,29 +32,38 @@ export default async function DiagramPage({
 
   if (!diagram) notFound();
 
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", diagram.workspace_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("owner_id")
-    .eq("id", diagram.workspace_id)
-    .single();
+  // Independent of each other — run in parallel to avoid a request waterfall.
+  const [
+    { data: membership },
+    { data: workspace },
+    { data: profile },
+    { data: tableRows },
+    { data: relRows },
+  ] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", diagram.workspace_id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("workspaces")
+      .select("owner_id")
+      .eq("id", diagram.workspace_id)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase.from("erd_tables").select("*").eq("diagram_id", id),
+    supabase.from("erd_relationships").select("*").eq("diagram_id", id),
+  ]);
 
   const userRole: WorkspaceRole =
     membership?.role === "owner" || workspace?.owner_id === user.id
       ? "owner"
       : "member";
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", user.id)
-    .maybeSingle();
 
   const currentUser = {
     id: user.id,
@@ -65,11 +73,6 @@ export default async function DiagramPage({
       user.email?.split("@")[0] ||
       "Someone",
   };
-
-  const { data: tableRows } = await supabase
-    .from("erd_tables")
-    .select("*")
-    .eq("diagram_id", id);
 
   const tableIds = (tableRows ?? []).map((t) => t.id);
 
@@ -88,11 +91,6 @@ export default async function DiagramPage({
       json_schema: c.json_schema ?? null,
     })) as ErdColumn[];
   }
-
-  const { data: relRows } = await supabase
-    .from("erd_relationships")
-    .select("*")
-    .eq("diagram_id", id);
 
   const tables: ErdTable[] = (tableRows ?? []).map((t) => ({
     id: t.id,
