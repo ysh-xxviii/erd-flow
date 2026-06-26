@@ -13,6 +13,9 @@ dark-themed interactive schema diagram.
   PK/FK markers, and relationship connectors (React Flow)
 - **AI table suggestions** — describe your app or define a few tables and get recommended
   related tables, columns, and foreign keys (OpenAI)
+- **API testing** — a Postman-style panel per diagram: environments with `{{variables}}`,
+  request collections, a request builder, schema-aware CRUD generation, and a secure
+  server proxy that sends requests and shows the response
 - **Persistence** — tables, columns, positions, and relationships saved to Supabase
 
 ## Tech stack
@@ -34,6 +37,10 @@ dark-themed interactive schema diagram.
    which adds the `category` column used to group tables into Core domain / Enums / Framework.
    Then run [`supabase/migrations/0003_schema_metadata.sql`](supabase/migrations/0003_schema_metadata.sql),
    which adds table descriptions, column defaults/labels, and index/unique constraints.
+   Finally run the remaining migrations in order through
+   [`supabase/migrations/0011_api_testing.sql`](supabase/migrations/0011_api_testing.sql),
+   which add JSON schema metadata, migration history, the playbook, realtime/comments/invites,
+   and the Postman-style API testing tables.
 3. Under **Authentication > Providers**, ensure **Email** is enabled. For quick local testing
    you may disable "Confirm email" so new accounts can sign in immediately.
 

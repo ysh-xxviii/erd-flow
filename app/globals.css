@@ -185,6 +185,15 @@ body {
   stroke-dasharray: 6 5;
 }
 
+/* API path badges + tooltips (EdgeLabelRenderer) above table nodes (max z-index 12) */
+.react-flow__edgelabel-renderer {
+  z-index: 20;
+  pointer-events: none;
+}
+.react-flow__edgelabel-renderer > * {
+  pointer-events: all;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

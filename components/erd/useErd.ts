@@ -53,6 +53,15 @@ function castCategory(c: unknown): TableCategory {
   return c === "framework" || c === "enum" ? c : "core";
 }
 
+function dedupeTables(list: ErdTable[]): ErdTable[] {
+  const seen = new Set<string>();
+  return list.filter((t) => {
+    if (seen.has(t.id)) return false;
+    seen.add(t.id);
+    return true;
+  });
+}
+
 function mapTableRow(
   data: Record<string, unknown>,
   columns: ErdColumn[],
@@ -137,7 +146,9 @@ export function useErd(
         col ? [col as ErdColumn] : [],
         diagramId
       );
-      setTables((t) => [...t, newTable]);
+      setTables((t) =>
+        t.some((tb) => tb.id === newTable.id) ? t : [...t, newTable]
+      );
       setSaving(false);
       return newTable;
     },
@@ -357,7 +368,11 @@ export function useErd(
         .select("*")
         .single();
       if (!data) return;
-      setRelationships((r) => [...r, data as ErdRelationship]);
+      setRelationships((r) =>
+        r.some((rel) => rel.id === (data as ErdRelationship).id)
+          ? r
+          : [...r, data as ErdRelationship]
+      );
     },
     [diagramId, supabase]
   );
@@ -539,11 +554,13 @@ export function useErd(
       .select("*")
       .eq("diagram_id", diagramId);
 
-    const nextTables = (tableRows ?? []).map((t) =>
-      mapTableRow(
-        t,
-        columnRows.filter((c) => c.table_id === t.id),
-        diagramId
+    const nextTables = dedupeTables(
+      (tableRows ?? []).map((t) =>
+        mapTableRow(
+          t,
+          columnRows.filter((c) => c.table_id === t.id),
+          diagramId
+        )
       )
     );
     setTables(nextTables);

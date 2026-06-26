@@ -6,20 +6,24 @@ import {
   SCHEMA_COLORS,
   categoryTag,
   tableColorHex,
+  type ErdRelationship,
   type ErdTable,
-  type SchemaSnapshot,
   type SuggestedColumn,
   type SuggestedTable,
   type TableCategory,
 } from "@/lib/types";
+import { buildSchemaSnapshot } from "@/lib/schemaSnapshot";
+import { SlideOver } from "./SlideOver";
 import { COLUMN_TYPES } from "./useErd";
 
 export function AiSuggestPanel({
   tables,
+  relationships,
   onClose,
   onApply,
 }: {
   tables: ErdTable[];
+  relationships?: ErdRelationship[];
   onClose: () => void;
   onApply: (selected: SuggestedTable[]) => Promise<void>;
 }) {
@@ -104,17 +108,7 @@ export function AiSuggestPanel({
     setExpandedPreview(null);
     setCustomizing(null);
 
-    const schema: SchemaSnapshot = {
-      tables: tables.map((t) => ({
-        name: t.name,
-        columns: t.columns.map((c) => ({
-          name: c.name,
-          data_type: c.data_type,
-          is_pk: c.is_pk,
-          is_fk: c.is_fk,
-        })),
-      })),
-    };
+    const schema = buildSchemaSnapshot(tables, relationships ?? []);
 
     try {
       const res = await fetch("/api/ai/suggest-tables", {
@@ -153,16 +147,7 @@ export function AiSuggestPanel({
   const selectedCount = suggestions.filter((s) => checked[s.name]).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <button
-        type="button"
-        aria-label="Close AI panel"
-        onClick={onClose}
-        disabled={applying}
-        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm disabled:cursor-not-allowed"
-      />
-
-      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-border-subtle bg-surface shadow-2xl">
+    <SlideOver onClose={onClose} backdropDisabled={applying}>
         {applying && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-surface/90 backdrop-blur-sm">
             <div className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-accent-purple border-t-transparent" />
@@ -185,7 +170,10 @@ export function AiSuggestPanel({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               disabled={applying}
               aria-label="Close"
               className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink disabled:opacity-50"
@@ -342,8 +330,7 @@ export function AiSuggestPanel({
             </button>
           </footer>
         )}
-      </aside>
-    </div>
+    </SlideOver>
   );
 }
 

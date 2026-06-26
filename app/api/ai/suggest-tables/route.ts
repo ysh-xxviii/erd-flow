@@ -14,6 +14,7 @@ Each suggested table must be tagged with a "category":
 - "framework": framework / infrastructure plumbing that real apps need. Include: password_reset_tokens, sessions, jobs, job_batches, failed_jobs, personal_access_tokens, cache, cache_locks.
 
 Rules:
+- Study the existing schema carefully: table categories, descriptions, constraints, relationships, column nullability, defaults, and json/jsonb schemas.
 - Do NOT repeat tables that already exist.
 - Suggest 8 to 14 tables total: cover core domain, at least 1 enum when a status/type makes sense, and the common framework/infra tables.
 - Use snake_case names with common conventions.
@@ -81,12 +82,12 @@ export async function POST(request: Request) {
   const description = (body.description ?? "").slice(0, 2000);
   const schema = body.schema ?? { tables: [] };
 
-  const userPrompt = `Existing schema (JSON):
+  const userPrompt = `Existing schema (detailed JSON — tables, columns, constraints, relationships):
 ${JSON.stringify(schema, null, 2)}
 
 Product description (may be empty): "${description}"
 
-Suggest the related tables now.`;
+Suggest the related tables now. Respect existing relationships when wiring FKs on new tables.`;
 
   try {
     // baseURL lets you point at any OpenAI-compatible provider (Groq, Together,

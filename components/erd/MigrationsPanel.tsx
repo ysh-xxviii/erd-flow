@@ -15,6 +15,7 @@ import {
   nextVersion,
   type DiagramMigration,
 } from "@/lib/migrations";
+import { SlideOver } from "./SlideOver";
 
 type Tab = "current" | "history";
 
@@ -142,15 +143,7 @@ export function MigrationsPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <button
-        type="button"
-        aria-label="Close migrations panel"
-        onClick={onClose}
-        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm"
-      />
-
-      <aside className="relative flex h-full w-full max-w-lg flex-col border-l border-border-subtle bg-surface shadow-2xl">
+    <SlideOver onClose={onClose}>
         <header className="border-b border-border-subtle p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -163,7 +156,10 @@ export function MigrationsPanel({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               aria-label="Close"
               className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink"
             >
@@ -345,8 +341,7 @@ export function MigrationsPanel({
             </>
           )}
         </div>
-      </aside>
-    </div>
+    </SlideOver>
   );
 }
 

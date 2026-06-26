@@ -15,6 +15,7 @@ import {
   useViewport,
   type Connection,
   type Edge,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
 } from "@xyflow/react";
@@ -24,6 +25,7 @@ import { buildPlaybookGuide, type PlaybookGuide } from "@/lib/playbookGuide";
 import {
   SCHEMA_COLORS,
   tableColorHex,
+  type ApiRequest,
   type Diagram,
   type ErdRelationship,
   type ErdTable,
@@ -47,12 +49,26 @@ import {
 } from "./PlaybookGuideOverlay";
 import { PresenceCursors, PresenceAvatars } from "./PresenceLayer";
 import { CommentsPanel } from "./CommentsPanel";
+import { ApiPanel } from "./ApiPanel";
+import { ApiPathEdge } from "./ApiPathEdge";
 import { useRealtimeErd } from "@/lib/useRealtimeErd";
 import { usePresence } from "@/lib/usePresence";
 import { listComments } from "@/lib/comments";
+import { listRequests } from "@/lib/apiTesting";
+import { buildEdgeEndpointMap } from "@/lib/apiEdgeLinks";
 import { createClient } from "@/lib/supabase/client";
 
 const nodeTypes: NodeTypes = { entity: EntityNode };
+const edgeTypes: EdgeTypes = { apiPath: ApiPathEdge };
+
+function dedupeById<T extends { id: string }>(list: T[]): T[] {
+  const seen = new Set<string>();
+  return list.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
 
 function parseColHandle(handle: string | null | undefined): string | null {
   if (!handle) return null;
@@ -134,10 +150,20 @@ function ErdBuilderInner({
   const [migrationsOpen, setMigrationsOpen] = useState(false);
   const [playbookOpen, setPlaybookOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [apiOpen, setApiOpen] = useState(false);
+  const [apiFocusTableId, setApiFocusTableId] = useState<string | null>(null);
+  const [apiFocusEndpointIds, setApiFocusEndpointIds] = useState<string[] | null>(
+    null
+  );
+  const [apiFocusLabel, setApiFocusLabel] = useState<string | null>(null);
+  const [apiRequests, setApiRequests] = useState<ApiRequest[]>([]);
   const [commentFocusTableId, setCommentFocusTableId] = useState<string | null>(
     null
   );
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {}
+  );
+  const [endpointCounts, setEndpointCounts] = useState<Record<string, number>>(
     {}
   );
   const [generalCommentCount, setGeneralCommentCount] = useState(0);
@@ -237,9 +263,80 @@ function ErdBuilderInner({
     };
   }, [diagram.id]);
 
+  const refreshApiRequests = useCallback(async () => {
+    try {
+      const reqs = await listRequests(diagram.id);
+      setApiRequests(reqs);
+      const counts: Record<string, number> = {};
+      for (const r of reqs) {
+        if (r.table_id) {
+          counts[r.table_id] = (counts[r.table_id] ?? 0) + 1;
+        }
+      }
+      setEndpointCounts(counts);
+    } catch {
+      /* non-fatal */
+    }
+  }, [diagram.id]);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const reqs = await listRequests(diagram.id);
+        if (!active) return;
+        setApiRequests(reqs);
+        const counts: Record<string, number> = {};
+        for (const r of reqs) {
+          if (r.table_id) {
+            counts[r.table_id] = (counts[r.table_id] ?? 0) + 1;
+          }
+        }
+        setEndpointCounts(counts);
+      } catch {
+        /* non-fatal */
+      }
+    };
+    void refresh();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`endpoint-counts:${diagram.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "diagram_api_requests",
+          filter: `diagram_id=eq.${diagram.id}`,
+        },
+        () => void refresh()
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [diagram.id]);
+
   const openComments = useCallback((tableId: string | null) => {
     setCommentFocusTableId(tableId);
     setCommentsOpen(true);
+  }, []);
+
+  const openApi = useCallback((tableId: string | null) => {
+    setApiFocusTableId(tableId);
+    setApiFocusEndpointIds(null);
+    setApiFocusLabel(null);
+    setApiOpen(true);
+  }, []);
+
+  const openApiForEndpoints = useCallback((ids: string[], label: string) => {
+    setApiFocusEndpointIds(ids);
+    setApiFocusLabel(label);
+    setApiFocusTableId(null);
+    setApiOpen(true);
   }, []);
 
   const totalOpenComments = useMemo(
@@ -330,16 +427,21 @@ function ErdBuilderInner({
           columns: t.columns,
           fkRefs,
           onJsonClick: openJsonSchema,
-          commentCount: commentCounts[t.id] ?? 0,
           onCommentClick: () => openComments(t.id),
+          onEndpointClick: () => openApi(t.id),
         },
       })),
-    [fkRefs, openJsonSchema, commentCounts, openComments]
+    [fkRefs, openJsonSchema, openComments, openApi]
+  );
+
+  const edgeEndpoints = useMemo(
+    () => buildEdgeEndpointMap(apiRequests, relationships, tables),
+    [apiRequests, relationships, tables]
   );
 
   const buildEdges = useCallback(
-    (rels: ErdRelationship[], list: ErdTable[]): Edge[] =>
-      rels.map((r) => {
+    (rels: ErdRelationship[], list: ErdTable[]): Edge[] => {
+      return dedupeById(rels).map((r) => {
         const src = list.find((t) => t.id === r.source_table_id);
         const tgt = list.find((t) => t.id === r.target_table_id);
         const color = src
@@ -352,19 +454,33 @@ function ErdBuilderInner({
           !!sourceCol?.is_fk && (sourceCol.is_nullable ?? false);
         const isDotted = isFramework || isNullableFk;
         const { sourceHandle, targetHandle } = resolveEdgeHandles(r, list);
+        const endpoints = edgeEndpoints[r.id] ?? [];
+        const hasApiPath = endpoints.length > 0;
+
         return {
           id: r.id,
           source: r.source_table_id,
           target: r.target_table_id,
           sourceHandle,
           targetHandle,
-          type: "smoothstep",
+          type: hasApiPath ? "apiPath" : "smoothstep",
           className: isDotted ? "erd-edge-dotted" : undefined,
           style: { stroke: color, strokeWidth: 1.8, opacity: 0.85 },
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+          data: hasApiPath
+            ? {
+                endpoints,
+                onOpen: () =>
+                  openApiForEndpoints(
+                    endpoints.map((ep) => ep.id),
+                    `${src?.name ?? "?"} → ${tgt?.name ?? "?"}`
+                  ),
+              }
+            : undefined,
         };
-      }),
-    []
+      });
+    },
+    [edgeEndpoints, openApiForEndpoints]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(
@@ -375,7 +491,21 @@ function ErdBuilderInner({
   );
 
   useEffect(() => {
-    setNodes(buildNodes(tables));
+    const uniqueTables = dedupeById(tables);
+    setNodes((prev) => {
+      const built = buildNodes(uniqueTables);
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      return built.map((b) => {
+        const existing = prevById.get(b.id);
+        if (!existing) return b;
+        return {
+          ...b,
+          position: existing.dragging ? existing.position : b.position,
+          selected: existing.selected,
+          dragging: existing.dragging,
+        };
+      });
+    });
   }, [tables, buildNodes, setNodes]);
 
   useEffect(() => {
@@ -392,7 +522,16 @@ function ErdBuilderInner({
             hoveredId,
             relatedIds
           );
-          return { ...n, className, zIndex };
+          return {
+            ...n,
+            className,
+            zIndex,
+            data: {
+              ...n.data,
+              commentCount: commentCounts[n.id] ?? 0,
+              endpointCount: endpointCounts[n.id] ?? 0,
+            },
+          };
         }
 
         let className = "";
@@ -420,9 +559,27 @@ function ErdBuilderInner({
           if (zIndex < 6) zIndex = 6;
         }
 
-        return { ...n, className, zIndex };
+        return {
+          ...n,
+          className,
+          zIndex,
+          data: {
+            ...n.data,
+            commentCount: commentCounts[n.id] ?? 0,
+            endpointCount: endpointCounts[n.id] ?? 0,
+          },
+        };
       }),
-    [nodes, hoveredId, relatedIds, activeGuide, currentGuidePhase, remoteHoverIds]
+    [
+      nodes,
+      hoveredId,
+      relatedIds,
+      activeGuide,
+      currentGuidePhase,
+      remoteHoverIds,
+      commentCounts,
+      endpointCounts,
+    ]
   );
 
   const displayEdges = useMemo(
@@ -594,6 +751,13 @@ function ErdBuilderInner({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => openApi(selectedTableId)}
+            className="h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
+          >
+            API
+          </button>
           {isOwner && (
             <button
               type="button"
@@ -633,6 +797,8 @@ function ErdBuilderInner({
           onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}
           onNodeMouseEnter={(_, node) => setHoveredId(node.id)}
+          onNodeMouseLeave={() => setHoveredId(null)}
+          onPaneMouseEnter={() => setHoveredId(null)}
           onNodeClick={(_, node) => {
             setSelectedTableId(node.id);
             focusTable(node.id);
@@ -640,6 +806,7 @@ function ErdBuilderInner({
           onNodeDoubleClick={(_, node) => openTableEditor(node.id)}
           onPointerMove={onPointerMove}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           minZoom={0.2}
           maxZoom={2.2}
           proOptions={{ hideAttribution: true }}
@@ -790,6 +957,7 @@ function ErdBuilderInner({
       {aiOpen && (
         <AiSuggestPanel
           tables={tables}
+          relationships={relationships}
           onClose={() => setAiOpen(false)}
           onApply={async (selected) => {
             const createdIds = await erd.applySuggestions(selected);
@@ -835,6 +1003,31 @@ function ErdBuilderInner({
           onClose={() => {
             setCommentsOpen(false);
             setCommentFocusTableId(null);
+          }}
+        />
+      )}
+
+      {apiOpen && (
+        <ApiPanel
+          diagramId={diagram.id}
+          tables={tables}
+          relationships={relationships}
+          selectedTableId={selectedTableId}
+          focusTableId={apiFocusTableId}
+          focusEndpointIds={apiFocusEndpointIds}
+          focusLabel={apiFocusLabel}
+          onClearFocus={() => {
+            setApiFocusTableId(null);
+            setApiFocusEndpointIds(null);
+            setApiFocusLabel(null);
+          }}
+          onRequestsChanged={() => void refreshApiRequests()}
+          onClose={() => {
+            setApiOpen(false);
+            setApiFocusTableId(null);
+            setApiFocusEndpointIds(null);
+            setApiFocusLabel(null);
+            void refreshApiRequests();
           }}
         />
       )}

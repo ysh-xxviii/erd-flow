@@ -118,11 +118,37 @@ export interface ErdRelationship {
 }
 
 // The full schema payload exchanged with the AI suggestion route and the canvas.
+export interface SchemaSnapshotColumn {
+  name: string;
+  data_type: string;
+  is_pk: boolean;
+  is_fk: boolean;
+  is_nullable?: boolean;
+  default_value?: string | null;
+  label?: string | null;
+  json_description?: string | null;
+  json_schema?: string | null;
+}
+
+export interface SchemaSnapshotTable {
+  name: string;
+  category?: TableCategory;
+  description?: string;
+  constraints?: ErdConstraint[];
+  columns: SchemaSnapshotColumn[];
+}
+
+export interface SchemaSnapshotRelationship {
+  from_table: string;
+  from_column: string;
+  to_table: string;
+  to_column?: string;
+  cardinality: Cardinality;
+}
+
 export interface SchemaSnapshot {
-  tables: {
-    name: string;
-    columns: { name: string; data_type: string; is_pk: boolean; is_fk: boolean }[];
-  }[];
+  tables: SchemaSnapshotTable[];
+  relationships?: SchemaSnapshotRelationship[];
 }
 
 // Shape returned by the AI suggestion endpoint.
@@ -221,4 +247,73 @@ export interface DiagramComment {
   body: string;
   resolved: boolean;
   created_at: string;
+}
+
+// =====================================================================
+// API testing (Postman-style)
+// =====================================================================
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export type RequestBodyType = "none" | "json";
+
+export interface ApiHeader {
+  key: string;
+  value: string;
+}
+
+export interface ApiEnvironment {
+  id: string;
+  diagram_id: string;
+  name: string;
+  variables: Record<string, string>;
+  is_default: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ApiCollection {
+  id: string;
+  diagram_id: string;
+  name: string;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ApiRequest {
+  id: string;
+  diagram_id: string;
+  collection_id: string | null;
+  table_id: string | null;
+  name: string;
+  method: HttpMethod;
+  url: string;
+  headers: ApiHeader[];
+  body: string;
+  body_type: RequestBodyType;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ApiResponseResult {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  durationMs: number;
+}
+
+export interface SuggestedEndpoint {
+  table: string | null;
+  name: string;
+  method: HttpMethod;
+  path: string;
+  body?: string;
+  description?: string;
+}
+
+export interface SuggestEndpointsResponse {
+  endpoints: SuggestedEndpoint[];
 }

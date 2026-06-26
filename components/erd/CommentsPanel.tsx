@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { DiagramComment, ErdTable } from "@/lib/types";
+import { SlideOver } from "./SlideOver";
 import {
   addComment,
   deleteComment,
@@ -168,15 +169,7 @@ export function CommentsPanel({
   const openCount = comments.filter((c) => !c.resolved).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <button
-        type="button"
-        aria-label="Close comments"
-        onClick={onClose}
-        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm"
-      />
-
-      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-border-subtle bg-surface shadow-2xl">
+    <SlideOver onClose={onClose}>
         <header className="border-b border-border-subtle p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -190,7 +183,10 @@ export function CommentsPanel({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               aria-label="Close"
               className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink"
             >
@@ -322,7 +318,6 @@ export function CommentsPanel({
             </button>
           </div>
         </form>
-      </aside>
-    </div>
+    </SlideOver>
   );
 }

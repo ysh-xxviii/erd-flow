@@ -24,6 +24,7 @@ import {
   toggleManualDone,
   updateStep,
 } from "@/lib/playbook";
+import { SlideOver } from "./SlideOver";
 
 const CHECK_TYPES: { value: PlaybookCheckType; label: string }[] = [
   { value: "manual", label: "Manual check-off" },
@@ -113,15 +114,7 @@ export function PlaybookPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <button
-        type="button"
-        aria-label="Close playbook"
-        onClick={onClose}
-        className="flex-1 cursor-pointer bg-black/50 backdrop-blur-sm"
-      />
-
-      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-border-subtle bg-surface shadow-2xl">
+    <SlideOver onClose={onClose}>
         <header className="border-b border-border-subtle p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -133,7 +126,10 @@ export function PlaybookPanel({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               aria-label="Close"
               className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors hover:bg-card hover:text-ink"
             >
@@ -259,8 +255,7 @@ export function PlaybookPanel({
             </ul>
           )}
         </div>
-      </aside>
-    </div>
+    </SlideOver>
   );
 }
 

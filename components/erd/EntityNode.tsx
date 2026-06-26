@@ -30,6 +30,8 @@ export interface EntityNodeData {
   onJsonClick?: (columnId: string) => void;
   commentCount?: number;
   onCommentClick?: () => void;
+  endpointCount?: number;
+  onEndpointClick?: () => void;
   [key: string]: unknown;
 }
 
@@ -198,6 +200,80 @@ function EntityNodeComponent({ data }: NodeProps) {
               {d.commentCount}
             </span>
           )}
+          {(d.endpointCount ?? 0) > 0 ? (
+            <span
+              role="button"
+              tabIndex={0}
+              title={`${d.endpointCount} API endpoint${d.endpointCount === 1 ? "" : "s"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                d.onEndpointClick?.();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  d.onEndpointClick?.();
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                fontSize: 9.5,
+                fontWeight: 600,
+                color: "#1bb38c",
+                background: "rgba(27,179,140,0.16)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1bb38c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 3v12" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M8.59 13.51l6.83-3.98" />
+                <path d="M15.41 6.49l-6.82 3.98" />
+              </svg>
+              {d.endpointCount}
+            </span>
+          ) : d.onEndpointClick ? (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Create API for this table"
+              onClick={(e) => {
+                e.stopPropagation();
+                d.onEndpointClick?.();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  d.onEndpointClick?.();
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                fontSize: 9.5,
+                fontWeight: 600,
+                color: "#1bb38c",
+                background: "rgba(27,179,140,0.08)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                cursor: "pointer",
+                opacity: 0.85,
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1bb38c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              API
+            </span>
+          ) : null}
           <span
             style={{
               fontSize: 9,
