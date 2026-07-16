@@ -629,10 +629,7 @@ function RunnerTab({
           method: request.method,
           url: trimmed,
           headers: request.headers,
-          body:
-            request.method === "GET" || request.method === "HEAD"
-              ? undefined
-              : body,
+          body: request.method === "GET" ? undefined : body,
         }),
       });
       const data = await res.json();
@@ -658,7 +655,7 @@ function RunnerTab({
           placeholder="https://jsonplaceholder.typicode.com/users"
         />
       </label>
-      {request.method !== "GET" && request.method !== "HEAD" && (
+      {request.method !== "GET" && (
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
