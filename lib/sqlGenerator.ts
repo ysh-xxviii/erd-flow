@@ -177,11 +177,17 @@ function indexStmts(table: MigrationTable): string[] {
 }
 
 function addFkStmt(fk: MigrationFk): string {
-  return `alter table ${quoteIdent(fk.source_table)} add constraint ${quoteIdent(
-    fkName(fk)
-  )} foreign key (${quoteIdent(fk.source_col)}) references ${quoteIdent(
-    fk.target_table
-  )} (${quoteIdent(fk.target_col)}) on delete cascade;`;
+  const name = quoteIdent(fkName(fk));
+  const table = quoteIdent(fk.source_table);
+  // Idempotent: re-shipping the same plan must not fail if the FK already exists.
+  return [
+    `alter table ${table} drop constraint if exists ${name};`,
+    `alter table ${table} add constraint ${name} foreign key (${quoteIdent(
+      fk.source_col
+    )}) references ${quoteIdent(fk.target_table)} (${quoteIdent(
+      fk.target_col
+    )}) on delete cascade;`,
+  ].join("\n");
 }
 
 function dropFkStmt(fk: MigrationFk): string {
