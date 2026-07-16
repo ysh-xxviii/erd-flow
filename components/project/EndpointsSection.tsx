@@ -554,7 +554,8 @@ function HealthTab({ name }: { name: string }) {
   return (
     <div className="max-w-lg space-y-4">
       <p className="text-xs text-[#9AA3B2]">
-        Demo health for <span className="text-[#E7EAF0]">{name}</span> (stubbed).
+        Illustrative latency sample for{" "}
+        <span className="text-[#E7EAF0]">{name}</span> (wire real APM later).
       </p>
       <div className="flex h-16 items-end gap-1 rounded-md border border-[#2E333D] bg-[#15181E] p-3">
         {points.map((p, i) => (

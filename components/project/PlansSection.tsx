@@ -170,14 +170,34 @@ export function PlansSection({
                 type="button"
                 onClick={() =>
                   requestProdGate(() => {
-                    void updatePlanStatus(plan.id, "approved").then(() => {
-                      pushToast(
-                        "Approved & shipped",
-                        "MVP: toast only — no live DB apply."
-                      );
-                      setPlanReviewMode(false);
-                      void reload();
-                    });
+                    void (async () => {
+                      try {
+                        const res = await fetch("/api/plans/ship", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            planId: plan.id,
+                            diagramId,
+                            confirmProduction: "PRODUCTION",
+                            includeSchemaSync: true,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Ship failed");
+                        pushToast(
+                          "Plan shipped",
+                          data.message ||
+                            `Applied ${data.applied ?? 0} statement(s)`
+                        );
+                        setPlanReviewMode(false);
+                        void reload();
+                      } catch (e) {
+                        pushToast(
+                          "Ship failed",
+                          e instanceof Error ? e.message : "Error"
+                        );
+                      }
+                    })();
                   })
                 }
                 className="cursor-pointer rounded bg-[#3FB27F] px-3 py-1.5 text-xs font-semibold text-[#111318]"

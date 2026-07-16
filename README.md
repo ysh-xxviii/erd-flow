@@ -1,101 +1,94 @@
-# ERD Flow / codecontext MVP
+# ERD Flow
 
-A multi-tenant **backend visibility & control plane** prototype. Connect a project
-(diagram), explore schemas as an ERD, endpoints as writeups + runner, a demo database
-grid, and reviewable **plans** for change sets.
+A multi-tenant **backend visibility & control plane**: ERD schemas, endpoint writeups,
+API runner, live customer Postgres, and reviewable plans that can ship SQL.
 
 ## Features
 
-- **Project shell** — section rail: Project · Backend · Frontend · Database · Plans
-- **Environments** — `dev` / `staging` / `prod` pill with a typed **prod gate**
-- **Connections** — repo + DB connect modals (fake test); empty states until connected
-- **Backend / Schemas** — existing ERD canvas, AI suggest, playbook, comments, migrations
-- **Backend / Endpoints** — writeup (inline edit + sense-check) · payload · health · runner
-- **Backend / Files** — mock repo tree; edits queue plan items
-- **Database** — Beekeeper-style demo grid, AI SQL stub, bulk-edit preview
-- **Frontend** — browser-chrome preview mapped to API calls
-- **Plans** — unsaved changes → Save to plan → review walkthrough → Approve & ship
-- **API testing** — Postman-style panel still available from the schemas toolbar
-- **Auth / multi-tenant** — Supabase Auth + RLS workspaces
+- **Project shell** — Project · Backend · Frontend · Database · Plans
+- **Environments** — `dev` / `staging` / `prod` with UI + **server-enforced** prod gate
+- **Live database** — encrypted Postgres URL, real table browser, SELECT runner, queued mutations
+- **Plans** — unsaved changes → Save to plan → Approve & ship applies SQL in a transaction
+- **Backend / Schemas** — ERD canvas, AI suggest, playbook, comments, migrations
+- **Backend / Endpoints** — writeup · payload · health · HTTP runner
+- **Backend / Files** — schema-derived file map (git clone not yet enabled)
+- **Frontend** — preview chrome mapped to API calls
+- **Auth / multi-tenant** — Supabase Auth + RLS
 
-## Demo shortcuts
+## Production setup
 
-- Append `?connected=1` to a diagram URL to skip the connect gate locally.
-- Project section → “Force demo connected” for a non-persisted override.
+### 1. Migrations
 
-## Tech stack
+Run SQL migrations **in order** through
+[`0015_db_credentials.sql`](supabase/migrations/0015_db_credentials.sql).
 
-- Next.js (App Router) + TypeScript + Tailwind CSS v4
-- Supabase (Postgres, Auth, RLS)
-- React Flow (`@xyflow/react`)
-- OpenAI-compatible AI routes
+| Migration | Purpose |
+| --- | --- |
+| `0012` | Connection metadata + `active_env` |
+| `0013` | Plans / plan items / plan comments |
+| `0014` | Endpoint writeups |
+| `0015` | `diagram_db_secrets` (service-role only ciphertext) |
 
-## Getting started
-
-### 1. Create a Supabase project
-
-1. Go to [supabase.com](https://supabase.com) and create a project.
-2. In the dashboard, open **SQL Editor** and run migrations **in order** from
-   [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) through
-   [`supabase/migrations/0014_endpoint_writeups.sql`](supabase/migrations/0014_endpoint_writeups.sql).
-
-   Notable later migrations:
-   - `0011_api_testing.sql` — API environments / collections / requests
-   - `0012_project_connections.sql` — repo/DB connection fields + `active_env`
-   - `0013_diagram_plans.sql` — plans, plan items, plan comments
-   - `0014_endpoint_writeups.sql` — writeup columns on requests
-
-3. Under **Authentication > Providers**, ensure **Email** is enabled. For quick local testing
-   you may disable "Confirm email" so new accounts can sign in immediately.
-
-### 2. Configure environment variables
-
-Copy the example file and fill in your keys:
+### 2. Environment variables
 
 ```bash
 cp .env.local.example .env.local
 ```
 
-| Variable | Where to find it |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings > API > Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings > API > anon public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > service_role key |
-| `OPENAI_API_KEY` | AI key. Free option: Groq ([console.groq.com/keys](https://console.groq.com/keys), `gsk_...`). Or OpenAI (`sk-...`) |
-| `OPENAI_BASE_URL` | OpenAI-compatible endpoint. Groq: `https://api.groq.com/openai/v1`. Leave blank for OpenAI |
-| `OPENAI_MODEL` | Groq: `llama-3.3-70b-versatile`. OpenAI: `gpt-4o-mini` |
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-only; reads DB secrets |
+| `APP_ENCRYPTION_KEY` | yes for live DB | ≥16 chars; encrypts customer Postgres URLs |
+| `OPENAI_API_KEY` | for AI features | Groq or OpenAI |
+| `OPENAI_BASE_URL` | optional | e.g. Groq `https://api.groq.com/openai/v1` |
+| `OPENAI_MODEL` | optional | e.g. `llama-3.3-70b-versatile` |
 
-### 3. Install & run
+Add the same vars in Vercel (or your host). **Never** expose `SUPABASE_SERVICE_ROLE_KEY` or `APP_ENCRYPTION_KEY` to the client.
+
+### 3. Connect a customer database
+
+1. Open a diagram → **Project** → **Connect database**
+2. Paste `postgresql://user:pass@host:5432/db?sslmode=require`
+3. Server tests the connection, stores ciphertext in `diagram_db_secrets`, returns only host/db metadata
+
+### 4. Ship a plan
+
+1. Queue changes (cell edits, bulk SQL, writeups, etc.) → **Save to plan**
+2. **Plans** → open plan → **Approve & ship**
+3. Server applies SQL statements (plus ERD schema sync when schema items exist) in a transaction
+4. On **prod** env, UI + API require `confirmProduction: "PRODUCTION"`
+
+### 5. Install & run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Security notes
+
+- Customer DB passwords never round-trip to the browser after save
+- Secrets table has RLS enabled with no anon/authenticated policies
+- HTTP proxy blocks private IPs (SSRF protection)
+- Plan ship is **owner-only** and prod-gated on the server
+- `?connected=1` only unlocks UI empty-states for endpoints/files — it does **not** grant a live DB
+
+## Still deferred
+
+- Git clone / static analysis for Files & auto-writeups
+- Real traffic health metrics (endpoint Health tab is illustrative)
+- Frontend is a generated preview, not a crawled live site
 
 ## Project structure
 
 ```
-app/
-  (auth)/login, (auth)/signup   Auth pages
-  (app)/dashboard               Workspaces + diagrams
-  (app)/diagram/[id]            ProjectShell (codecontext MVP)
-  api/ai/*, api/http/send       AI + HTTP proxy
-components/
-  project/                      Shell, sections, modals, plans UI
-  erd/                          ERD canvas + API panel
-lib/
-  projectStore.tsx              Section / env / connection state
-  pendingChanges.tsx            Unsaved change queue + toasts
-  plans.ts                      Plan CRUD
-  writeup.ts                    Endpoint writeup helpers
-  mockData.ts                   Fake rows / files / SQL stubs
-supabase/migrations/            SQL schema + RLS through 0014
+app/api/db/*          Live Postgres connect / query / execute
+app/api/plans/ship    Approve & apply plan SQL
+lib/customerDb.ts     pg client helpers
+lib/crypto.ts         AES-GCM credential encryption
+lib/diagramAccess.ts  Authz + service-role secret load
+components/project/   Control-plane shell
+supabase/migrations/  Through 0015
 ```
-
-## MVP honesty
-
-Repo connect, DB connect tests, health sparklines, AI SQL, bulk edit, and frontend
-preview use **stubbed / demo data**. Real HTTP runner and ERD persistence remain live.
-Approving a plan shows a shipped toast and does **not** apply SQL to a customer database.

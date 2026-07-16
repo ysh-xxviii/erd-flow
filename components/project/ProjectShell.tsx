@@ -199,7 +199,10 @@ function ProjectShellInner({
               />
             )}
             {activeSection === "database" && (
-              <DatabaseSection tables={initialTables} />
+              <DatabaseSection
+                tables={initialTables}
+                diagramId={diagram.id}
+              />
             )}
             {activeSection === "plans" && (
               <PlansSection diagramId={diagram.id} tables={initialTables} />

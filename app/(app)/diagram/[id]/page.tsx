@@ -31,7 +31,9 @@ export default async function DiagramPage({
 
   const { data: diagram } = await supabase
     .from("diagrams")
-    .select("*")
+    .select(
+      "id, workspace_id, name, created_at, updated_at, repo_url, db_host, db_name, db_connection_hint, repo_connected, db_connected, active_env"
+    )
     .eq("id", id)
     .single();
 

@@ -11,31 +11,24 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
     setModal,
     setConnections,
     repoUrl,
-    dbHost,
-    dbName,
-    dbHint,
     confirmProdGate,
     clearProdGate,
   } = useProjectStore();
   const { clearChanges, pushToast } = usePendingChanges();
 
   const [repo, setRepo] = useState(repoUrl ?? "");
-  const [host, setHost] = useState(dbHost ?? "");
-  const [name, setName] = useState(dbName ?? "");
-  const [hint, setHint] = useState(dbHint ?? "");
+  const [connectionString, setConnectionString] = useState("");
   const [testing, setTesting] = useState(false);
   const [prodConfirm, setProdConfirm] = useState("");
 
   useEffect(() => {
     if (modal === "connect" || modal === "editDb") {
       setRepo(repoUrl ?? "");
-      setHost(dbHost ?? "");
-      setName(dbName ?? "");
-      setHint(dbHint ?? "");
+      setConnectionString("");
       setTesting(false);
     }
     if (modal === "prodGate") setProdConfirm("");
-  }, [modal, repoUrl, dbHost, dbName, dbHint]);
+  }, [modal, repoUrl]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -50,33 +43,63 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
 
   if (!modal) return null;
 
-  async function fakeTestAndSave(connectBoth: boolean) {
+  async function realConnect() {
+    if (!connectionString.trim()) {
+      pushToast("Connection string required", "Use a postgres:// URL");
+      return;
+    }
     setTesting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setTesting(false);
-    const patch = {
-      repo_url: repo || null,
-      db_host: host || null,
-      db_name: name || null,
-      db_connection_hint: hint || null,
-      repo_connected: connectBoth ? !!repo : !!repo,
-      db_connected: connectBoth ? !!(host && name) : !!(host && name),
-    };
     try {
-      await updateDiagramConnections(diagramId, patch);
-      setConnections({
-        repoUrl: patch.repo_url,
-        dbHost: patch.db_host,
-        dbName: patch.db_name,
-        dbHint: patch.db_connection_hint,
-        repoConnected: patch.repo_connected,
-        dbConnected: patch.db_connected,
+      const res = await fetch("/api/db/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagramId,
+          connectionString: connectionString.trim(),
+          repoUrl: repo.trim() || null,
+        }),
       });
-      pushToast("Connected", "Repo and database connection saved.");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+
+      setConnections({
+        repoUrl: repo.trim() || null,
+        dbHost: data.meta?.host ?? null,
+        dbName: data.meta?.database ?? null,
+        dbHint: data.meta
+          ? `${data.meta.user}@${data.meta.host}/${data.meta.database}`
+          : null,
+        repoConnected: !!repo.trim(),
+        dbConnected: true,
+      });
+      pushToast("Connected", "Database verified and credentials encrypted.");
+      setModal(null);
+      setConnectionString("");
+    } catch (e) {
+      pushToast(
+        "Connection failed",
+        e instanceof Error ? e.message : "Unknown error"
+      );
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function saveRepoOnly() {
+    try {
+      await updateDiagramConnections(diagramId, {
+        repo_url: repo.trim() || null,
+        repo_connected: !!repo.trim(),
+      });
+      setConnections({
+        repoUrl: repo.trim() || null,
+        repoConnected: !!repo.trim(),
+      });
+      pushToast("Repo saved", repo.trim() || "Cleared");
       setModal(null);
     } catch (e) {
       pushToast(
-        "Could not save connection",
+        "Could not save",
         e instanceof Error ? e.message : "Unknown error"
       );
     }
@@ -85,51 +108,38 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-lg border border-[#2E333D] bg-[#1A1D23] p-5 shadow-2xl">
-        {modal === "connect" && (
+        {(modal === "connect" || modal === "editDb") && (
           <>
             <h2 className="text-base font-semibold text-[#E7EAF0]">
-              Connect repo & database
+              {modal === "editDb" ? "Update database connection" : "Connect database"}
             </h2>
             <p className="mt-1 text-xs text-[#9AA3B2]">
-              MVP uses a fake test-connection. Credentials are not executed.
+              Connection string is tested live, then stored encrypted on the
+              server. It is never sent back to the browser.
             </p>
-            <label className="mt-4 block text-[11px] text-[#646D7E]">
-              Repo URL
-              <input
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                placeholder="https://github.com/org/app"
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
-              />
-            </label>
+            {modal === "connect" && (
+              <label className="mt-4 block text-[11px] text-[#646D7E]">
+                Repo URL (optional)
+                <input
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
+                  placeholder="https://github.com/org/app"
+                  className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
+                />
+              </label>
+            )}
             <label className="mt-3 block text-[11px] text-[#646D7E]">
-              DB host
+              Postgres connection string
               <input
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="db.example.com"
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
+                type="password"
+                value={connectionString}
+                onChange={(e) => setConnectionString(e.target.value)}
+                placeholder="postgresql://user:pass@host:5432/dbname?sslmode=require"
+                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 font-mono text-sm text-[#E7EAF0]"
+                autoComplete="off"
               />
             </label>
-            <label className="mt-3 block text-[11px] text-[#646D7E]">
-              Database name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="app_production"
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
-              />
-            </label>
-            <label className="mt-3 block text-[11px] text-[#646D7E]">
-              Connection hint (non-secret)
-              <input
-                value={hint}
-                onChange={(e) => setHint(e.target.value)}
-                placeholder="postgres · ssl · read-write"
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
-              />
-            </label>
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setModal(null)}
@@ -137,54 +147,22 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
               >
                 Cancel
               </button>
+              {modal === "connect" && (
+                <button
+                  type="button"
+                  onClick={() => void saveRepoOnly()}
+                  className="cursor-pointer rounded-md border border-[#2E333D] px-3 py-1.5 text-sm text-[#9AA3B2]"
+                >
+                  Save repo only
+                </button>
+              )}
               <button
                 type="button"
-                disabled={testing || !repo || !host || !name}
-                onClick={() => void fakeTestAndSave(true)}
-                className="cursor-pointer rounded-md bg-[#6E9BF5] px-3 py-1.5 text-sm font-semibold text-[#111318] disabled:opacity-50"
+                disabled={testing || !connectionString.trim()}
+                onClick={() => void realConnect()}
+                className="cursor-pointer rounded-md bg-[#4EB3A5] px-3 py-1.5 text-sm font-semibold text-[#111318] disabled:opacity-50"
               >
-                {testing ? "Testing…" : "Test & connect"}
-              </button>
-            </div>
-          </>
-        )}
-
-        {modal === "editDb" && (
-          <>
-            <h2 className="text-base font-semibold text-[#E7EAF0]">
-              Edit database connection
-            </h2>
-            <label className="mt-4 block text-[11px] text-[#646D7E]">
-              DB host
-              <input
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
-              />
-            </label>
-            <label className="mt-3 block text-[11px] text-[#646D7E]">
-              Database name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#111318] px-2.5 py-2 text-sm text-[#E7EAF0]"
-              />
-            </label>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="cursor-pointer rounded-md border border-[#2E333D] px-3 py-1.5 text-sm text-[#9AA3B2]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={testing}
-                onClick={() => void fakeTestAndSave(false)}
-                className="cursor-pointer rounded-md bg-[#4EB3A5] px-3 py-1.5 text-sm font-semibold text-[#111318]"
-              >
-                {testing ? "Testing…" : "Save"}
+                {testing ? "Testing…" : "Test & save"}
               </button>
             </div>
           </>
@@ -196,8 +174,8 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
               Discard unsaved changes?
             </h2>
             <p className="mt-2 text-sm text-[#9AA3B2]">
-              This clears the local change queue. Nothing already saved to a plan
-              is affected.
+              This clears the local change queue. Plans already saved are not
+              affected.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -229,7 +207,8 @@ export function ProjectModals({ diagramId }: { diagramId: string }) {
             </h2>
             <p className="mt-2 text-sm text-[#9AA3B2]">
               You are in <span className="text-[#C25E5E]">prod</span>. Type{" "}
-              <code className="text-[#D9A03F]">PRODUCTION</code> to confirm.
+              <code className="text-[#D9A03F]">PRODUCTION</code> to confirm this
+              mutating action.
             </p>
             <input
               value={prodConfirm}

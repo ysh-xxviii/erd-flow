@@ -23,7 +23,6 @@ export function ProjectSection({
     repoConnected,
     dbConnected,
     setModal,
-    setConnections,
   } = useProjectStore();
   const { pushToast } = usePendingChanges();
 
@@ -104,13 +103,13 @@ export function ProjectSection({
             <p className="mt-2 font-mono text-xs text-[#9AA3B2]">
               {dbHost || "—"} / {dbName || "—"}
             </p>
-            <button
-              type="button"
-              onClick={() => setModal(dbConnected ? "editDb" : "connect")}
-              className="mt-3 cursor-pointer text-xs text-[#6E9BF5]"
-            >
-              {dbConnected ? "Edit connection" : "Connect"}
-            </button>
+          <button
+            type="button"
+            onClick={() => setModal(dbConnected ? "editDb" : "connect")}
+            className="mt-3 cursor-pointer text-xs text-[#6E9BF5]"
+          >
+            {dbConnected ? "Update database connection" : "Connect database"}
+          </button>
           </div>
 
           <div className="rounded-md border border-[#2E333D] bg-[#15181E] p-4">
@@ -133,31 +132,19 @@ export function ProjectSection({
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[10px] text-[#646D7E]">
+              Prod mutations require typing PRODUCTION and are enforced on the
+              server.
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setConnections({
-                repoConnected: true,
-                dbConnected: true,
-                repoUrl: repoUrl || "https://github.com/demo/app",
-                dbHost: dbHost || "localhost",
-                dbName: dbName || "demo",
-              });
-              pushToast("Demo connected", "Local override (not persisted).");
-            }}
-            className="cursor-pointer text-[11px] text-[#646D7E] underline"
-          >
-            Force demo connected (local)
-          </button>
         </section>
       </div>
 
       <Inspector title="Project" breadcrumb={diagram.name}>
         <p className="text-xs text-[#9AA3B2]">
-          Use <code className="text-[#D9A03F]">?connected=1</code> on the URL to
-          skip the connect gate for local demos.
+          Set <code className="text-[#D9A03F]">APP_ENCRYPTION_KEY</code> in
+          server env before connecting a database. Run migrations through{" "}
+          <code className="text-[#D9A03F]">0015_db_credentials.sql</code>.
         </p>
       </Inspector>
     </div>

@@ -60,6 +60,9 @@ export function FilesSection({
       <aside className="flex w-[248px] flex-none flex-col border-r border-[#2E333D] bg-[#15181E]">
         <div className="border-b border-[#2E333D] px-3 py-2.5 text-[10px] uppercase tracking-wider text-[#646D7E]">
           Files
+          <span className="mt-0.5 block normal-case tracking-normal text-[#646D7E]">
+            Schema-derived map (git clone not enabled yet)
+          </span>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
           {files.map((f) => (
