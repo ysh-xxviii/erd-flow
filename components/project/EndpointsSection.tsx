@@ -202,6 +202,7 @@ export function EndpointsSection({
               {tab === "health" && <HealthTab name={selected.name} />}
               {tab === "runner" && (
                 <RunnerTab
+                  diagramId={diagramId}
                   request={selected}
                   onSend={(fn) => requestProdGate(fn)}
                 />
@@ -583,18 +584,40 @@ function HealthTab({ name }: { name: string }) {
 }
 
 function RunnerTab({
+  diagramId,
   request,
   onSend,
 }: {
+  diagramId: string;
   request: ApiRequest;
   onSend: (fn: () => void) => void;
 }) {
+  const defaultUrl =
+    request.url?.includes("{{") || !request.url?.startsWith("http")
+      ? "https://jsonplaceholder.typicode.com/users"
+      : request.url;
+  const [url, setUrl] = useState(defaultUrl);
   const [body, setBody] = useState(request.body || '{\n  "example": true\n}');
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { pushToast } = usePendingChanges();
 
+  useEffect(() => {
+    const next =
+      request.url?.includes("{{") || !request.url?.startsWith("http")
+        ? "https://jsonplaceholder.typicode.com/users"
+        : request.url;
+    setUrl(next);
+    setBody(request.body || '{\n  "example": true\n}');
+    setResult(null);
+  }, [request.id, request.url, request.body]);
+
   async function send() {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      pushToast("URL required", "Enter a full https:// URL");
+      return;
+    }
     setBusy(true);
     setResult(null);
     try {
@@ -602,10 +625,14 @@ function RunnerTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          diagramId,
           method: request.method,
-          url: request.url,
+          url: trimmed,
           headers: request.headers,
-          body: request.body_type === "none" ? undefined : body,
+          body:
+            request.method === "GET" || request.method === "HEAD"
+              ? undefined
+              : body,
         }),
       });
       const data = await res.json();
@@ -620,14 +647,25 @@ function RunnerTab({
   return (
     <div className="mx-auto max-w-xl space-y-3">
       <p className="text-xs text-[#9AA3B2]">
-        {request.name}. Env-aware send via server proxy. Prod is gated.
+        {request.name}. Sends via server proxy. Prod is gated.
       </p>
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={8}
-        className="w-full rounded-md border border-[#2E333D] bg-[#15181E] p-3 font-mono text-xs text-[#E7EAF0]"
-      />
+      <label className="block text-[10px] uppercase text-[#646D7E]">
+        URL
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="mt-1 w-full rounded-md border border-[#2E333D] bg-[#15181E] px-3 py-2 font-mono text-xs text-[#E7EAF0]"
+          placeholder="https://jsonplaceholder.typicode.com/users"
+        />
+      </label>
+      {request.method !== "GET" && request.method !== "HEAD" && (
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={8}
+          className="w-full rounded-md border border-[#2E333D] bg-[#15181E] p-3 font-mono text-xs text-[#E7EAF0]"
+        />
+      )}
       <button
         type="button"
         disabled={busy}
