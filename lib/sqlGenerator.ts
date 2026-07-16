@@ -34,6 +34,17 @@ export interface MigrationSnapshot {
 
 const SIMPLE_IDENT = /^[a-z_][a-z0-9_]*$/;
 
+/** Neon/modern Postgres: prefer gen_random_uuid() over uuid-ossp. */
+export function normalizePostgresDefault(expr: string): string {
+  return expr
+    .replace(/\buuid_generate_v4\s*\(\s*\)/gi, "gen_random_uuid()")
+    .replace(/\bpublic\.uuid_generate_v4\s*\(\s*\)/gi, "gen_random_uuid()");
+}
+
+export function normalizePostgresSql(sql: string): string {
+  return normalizePostgresDefault(sql);
+}
+
 function quoteIdent(name: string): string {
   const trimmed = name.trim();
   if (SIMPLE_IDENT.test(trimmed)) return trimmed;
@@ -129,7 +140,7 @@ function columnDef(col: MigrationColumn): string {
   let def = `  ${quoteIdent(col.name)} ${col.data_type}`;
   if (!col.is_nullable) def += " not null";
   if (col.default_value != null && col.default_value !== "") {
-    def += ` default ${col.default_value}`;
+    def += ` default ${normalizePostgresDefault(col.default_value)}`;
   }
   return def;
 }
@@ -313,7 +324,7 @@ export function generateDiffSql(
           col.default_value != null && col.default_value !== ""
             ? `alter table ${quoteIdent(curr.name)} alter column ${quoteIdent(
                 col.name
-              )} set default ${col.default_value};`
+              )} set default ${normalizePostgresDefault(col.default_value)};`
             : `alter table ${quoteIdent(curr.name)} alter column ${quoteIdent(
                 col.name
               )} drop default;`

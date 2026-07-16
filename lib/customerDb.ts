@@ -136,7 +136,12 @@ export async function executeStatements(
 ): Promise<{ applied: number; results: string[] }> {
   const cleaned = statements
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith("--"));
+    .filter((s) => s.length > 0 && !s.startsWith("--"))
+    .map((s) =>
+      s
+        .replace(/\buuid_generate_v4\s*\(\s*\)/gi, "gen_random_uuid()")
+        .replace(/\bpublic\.uuid_generate_v4\s*\(\s*\)/gi, "gen_random_uuid()")
+    );
   if (cleaned.length === 0) throw new Error("No SQL statements to apply");
 
   return withCustomerClient(cipher, async (client) => {
