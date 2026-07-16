@@ -62,12 +62,31 @@ export interface Workspace {
   created_at: string;
 }
 
+export type ProjectEnv = "dev" | "staging" | "prod";
+
+export type ProjectSection =
+  | "project"
+  | "backend"
+  | "frontend"
+  | "database"
+  | "plans";
+
+export type BackendTab = "schemas" | "endpoints" | "files";
+
 export interface Diagram {
   id: string;
   workspace_id: string;
   name: string;
   created_at: string;
   updated_at: string;
+  /** Connection + env fields (migration 0012). Optional for older rows. */
+  repo_url?: string | null;
+  db_host?: string | null;
+  db_name?: string | null;
+  db_connection_hint?: string | null;
+  repo_connected?: boolean;
+  db_connected?: boolean;
+  active_env?: ProjectEnv;
 }
 
 export interface ErdColumn {
@@ -281,6 +300,12 @@ export interface ApiCollection {
   created_at: string;
 }
 
+export interface WriteupStep {
+  id: string;
+  title: string;
+  body: string;
+}
+
 export interface ApiRequest {
   id: string;
   diagram_id: string;
@@ -295,6 +320,57 @@ export interface ApiRequest {
   sort_order: number;
   created_by: string | null;
   created_at: string;
+  writeup_intro?: string | null;
+  writeup_steps?: WriteupStep[] | null;
+}
+
+// =====================================================================
+// Plans / pending changes (codecontext control plane)
+// =====================================================================
+
+export type PlanStatus =
+  | "draft"
+  | "in_review"
+  | "approved"
+  | "changes_requested";
+
+export type PlanItemKind =
+  | "schema"
+  | "endpoint"
+  | "writeup"
+  | "payload"
+  | "file"
+  | "db_row"
+  | "cleanup";
+
+export interface DiagramPlan {
+  id: string;
+  diagram_id: string;
+  title: string;
+  status: PlanStatus;
+  created_by: string | null;
+  created_at: string;
+  items?: DiagramPlanItem[];
+}
+
+export interface DiagramPlanItem {
+  id: string;
+  plan_id: string;
+  kind: PlanItemKind;
+  summary: string;
+  payload: Record<string, unknown>;
+  diff_hint: string | null;
+  sort_order: number;
+}
+
+export interface PendingChange {
+  id: string;
+  kind: PlanItemKind;
+  summary: string;
+  payload: Record<string, unknown>;
+  diffHint?: string;
+  /** Short label for the unsaved chip */
+  label: string;
 }
 
 export interface ApiResponseResult {

@@ -8,17 +8,22 @@ import type {
   ErdColumn,
   ErdRelationship,
   ErdTable,
+  ProjectEnv,
   TableCategory,
   WorkspaceRole,
 } from "@/lib/types";
-import { ErdBuilder } from "@/components/erd/ErdBuilder";
+import { ProjectShell } from "@/components/project/ProjectShell";
 
 export default async function DiagramPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ connected?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const forceConnected = sp.connected === "1";
   const supabase = await createClient();
 
   const user = await getCurrentUser();
@@ -32,13 +37,13 @@ export default async function DiagramPage({
 
   if (!diagram) notFound();
 
-  // Independent of each other — run in parallel to avoid a request waterfall.
   const [
     { data: membership },
     { data: workspace },
     { data: profile },
     { data: tableRows },
     { data: relRows },
+    { data: siblingRows },
   ] = await Promise.all([
     supabase
       .from("workspace_members")
@@ -58,6 +63,11 @@ export default async function DiagramPage({
       .maybeSingle(),
     supabase.from("erd_tables").select("*").eq("diagram_id", id),
     supabase.from("erd_relationships").select("*").eq("diagram_id", id),
+    supabase
+      .from("diagrams")
+      .select("id, name")
+      .eq("workspace_id", diagram.workspace_id)
+      .order("updated_at", { ascending: false }),
   ]);
 
   const userRole: WorkspaceRole =
@@ -105,13 +115,29 @@ export default async function DiagramPage({
     columns: columnRows.filter((c) => c.table_id === t.id),
   }));
 
+  const diagramModel: Diagram = {
+    ...(diagram as Diagram),
+    repo_url: diagram.repo_url ?? null,
+    db_host: diagram.db_host ?? null,
+    db_name: diagram.db_name ?? null,
+    db_connection_hint: diagram.db_connection_hint ?? null,
+    repo_connected: !!diagram.repo_connected,
+    db_connected: !!diagram.db_connected,
+    active_env: (diagram.active_env as ProjectEnv) ?? "dev",
+  };
+
   return (
-    <ErdBuilder
-      diagram={diagram as Diagram}
+    <ProjectShell
+      diagram={diagramModel}
       initialTables={tables}
       initialRelationships={(relRows ?? []) as ErdRelationship[]}
       userRole={userRole}
       currentUser={currentUser}
+      siblingDiagrams={(siblingRows ?? []).map((d) => ({
+        id: d.id as string,
+        name: d.name as string,
+      }))}
+      forceConnected={forceConnected}
     />
   );
 }

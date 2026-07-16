@@ -1,46 +1,50 @@
-# ERD Flow
+# ERD Flow / codecontext MVP
 
-A multi-tenant, AI-assisted **Entity-Relationship Diagram builder**. Sign up, get your own
-workspace, define tables, receive AI-recommended related tables, and render a beautiful
-dark-themed interactive schema diagram.
+A multi-tenant **backend visibility & control plane** prototype. Connect a project
+(diagram), explore schemas as an ERD, endpoints as writeups + runner, a demo database
+grid, and reviewable **plans** for change sets.
 
 ## Features
 
-- **Auth** — email/password login & signup (Supabase Auth)
-- **Multi-tenant** — every user gets a personal workspace on signup; all data is isolated per
-  workspace via Postgres Row-Level Security
-- **Visual ERD builder** — drag-and-drop entity cards with color-coded headers, columns with
-  PK/FK markers, and relationship connectors (React Flow)
-- **AI table suggestions** — describe your app or define a few tables and get recommended
-  related tables, columns, and foreign keys (OpenAI)
-- **API testing** — a Postman-style panel per diagram: environments with `{{variables}}`,
-  request collections, a request builder, schema-aware CRUD generation, and a secure
-  server proxy that sends requests and shows the response
-- **Persistence** — tables, columns, positions, and relationships saved to Supabase
+- **Project shell** — section rail: Project · Backend · Frontend · Database · Plans
+- **Environments** — `dev` / `staging` / `prod` pill with a typed **prod gate**
+- **Connections** — repo + DB connect modals (fake test); empty states until connected
+- **Backend / Schemas** — existing ERD canvas, AI suggest, playbook, comments, migrations
+- **Backend / Endpoints** — writeup (inline edit + sense-check) · payload · health · runner
+- **Backend / Files** — mock repo tree; edits queue plan items
+- **Database** — Beekeeper-style demo grid, AI SQL stub, bulk-edit preview
+- **Frontend** — browser-chrome preview mapped to API calls
+- **Plans** — unsaved changes → Save to plan → review walkthrough → Approve & ship
+- **API testing** — Postman-style panel still available from the schemas toolbar
+- **Auth / multi-tenant** — Supabase Auth + RLS workspaces
+
+## Demo shortcuts
+
+- Append `?connected=1` to a diagram URL to skip the connect gate locally.
+- Project section → “Force demo connected” for a non-persisted override.
 
 ## Tech stack
 
 - Next.js (App Router) + TypeScript + Tailwind CSS v4
 - Supabase (Postgres, Auth, RLS)
 - React Flow (`@xyflow/react`)
-- OpenAI
+- OpenAI-compatible AI routes
 
 ## Getting started
 
 ### 1. Create a Supabase project
 
 1. Go to [supabase.com](https://supabase.com) and create a project.
-2. In the dashboard, open **SQL Editor** and run the migration in
-   [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql). This creates all
-   tables, RLS policies, and the signup trigger that provisions a personal workspace.
-   Then run [`supabase/migrations/0002_table_category.sql`](supabase/migrations/0002_table_category.sql),
-   which adds the `category` column used to group tables into Core domain / Enums / Framework.
-   Then run [`supabase/migrations/0003_schema_metadata.sql`](supabase/migrations/0003_schema_metadata.sql),
-   which adds table descriptions, column defaults/labels, and index/unique constraints.
-   Finally run the remaining migrations in order through
-   [`supabase/migrations/0011_api_testing.sql`](supabase/migrations/0011_api_testing.sql),
-   which add JSON schema metadata, migration history, the playbook, realtime/comments/invites,
-   and the Postman-style API testing tables.
+2. In the dashboard, open **SQL Editor** and run migrations **in order** from
+   [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) through
+   [`supabase/migrations/0014_endpoint_writeups.sql`](supabase/migrations/0014_endpoint_writeups.sql).
+
+   Notable later migrations:
+   - `0011_api_testing.sql` — API environments / collections / requests
+   - `0012_project_connections.sql` — repo/DB connection fields + `active_env`
+   - `0013_diagram_plans.sql` — plans, plan items, plan comments
+   - `0014_endpoint_writeups.sql` — writeup columns on requests
+
 3. Under **Authentication > Providers**, ensure **Email** is enabled. For quick local testing
    you may disable "Confirm email" so new accounts can sign in immediately.
 
@@ -61,10 +65,6 @@ cp .env.local.example .env.local
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint. Groq: `https://api.groq.com/openai/v1`. Leave blank for OpenAI |
 | `OPENAI_MODEL` | Groq: `llama-3.3-70b-versatile`. OpenAI: `gpt-4o-mini` |
 
-> The AI suggestion route uses the OpenAI SDK pointed at `OPENAI_BASE_URL`, so any
-> OpenAI-compatible provider works (Groq, Together, OpenRouter, local Ollama, etc.).
-> Groq is recommended for a free, open-source option.
-
 ### 3. Install & run
 
 ```bash
@@ -80,11 +80,22 @@ Open [http://localhost:3000](http://localhost:3000).
 app/
   (auth)/login, (auth)/signup   Auth pages
   (app)/dashboard               Workspaces + diagrams
-  (app)/diagram/[id]            The ERD builder
-  api/ai/suggest-tables         OpenAI suggestion route
+  (app)/diagram/[id]            ProjectShell (codecontext MVP)
+  api/ai/*, api/http/send       AI + HTTP proxy
+components/
+  project/                      Shell, sections, modals, plans UI
+  erd/                          ERD canvas + API panel
 lib/
-  supabase/                     Browser + server clients
-  types.ts                      Shared domain types
-supabase/migrations/            SQL schema + RLS + triggers
-proxy.ts                        Route protection + session refresh
+  projectStore.tsx              Section / env / connection state
+  pendingChanges.tsx            Unsaved change queue + toasts
+  plans.ts                      Plan CRUD
+  writeup.ts                    Endpoint writeup helpers
+  mockData.ts                   Fake rows / files / SQL stubs
+supabase/migrations/            SQL schema + RLS through 0014
 ```
+
+## MVP honesty
+
+Repo connect, DB connect tests, health sparklines, AI SQL, bulk edit, and frontend
+preview use **stubbed / demo data**. Real HTTP runner and ERD persistence remain live.
+Approving a plan shows a shipped toast and does **not** apply SQL to a customer database.

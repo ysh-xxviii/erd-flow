@@ -122,12 +122,17 @@ function ErdBuilderInner({
   initialRelationships,
   userRole,
   currentUser,
+  shellMode = false,
+  planDiffTableIds,
 }: {
   diagram: Diagram;
   initialTables: ErdTable[];
   initialRelationships: ErdRelationship[];
   userRole: WorkspaceRole;
   currentUser: { id: string; name: string };
+  shellMode?: boolean;
+  /** Table ids highlighted in plan review overlays */
+  planDiffTableIds?: Set<string>;
 }) {
   const isOwner = userRole === "owner";
   const erd = useErd(diagram.id, initialTables, initialRelationships);
@@ -659,7 +664,11 @@ function ErdBuilderInner({
 
   return (
     <div
-      className="flex h-[calc(100vh-3.5rem)] w-full"
+      className={
+        shellMode
+          ? "flex h-full w-full"
+          : "flex h-[calc(100vh-3.5rem)] w-full"
+      }
       onMouseLeave={() => setHoveredId(null)}
     >
       <SidePanel
@@ -682,12 +691,14 @@ function ErdBuilderInner({
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {/* top-left: back + saving */}
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
-          <Link
-            href="/dashboard"
-            className="pointer-events-auto cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 py-1.5 text-sm text-[#cdd7ec] transition-colors hover:text-ink"
-          >
-            ← Dashboard
-          </Link>
+          {!shellMode && (
+            <Link
+              href="/dashboard"
+              className="pointer-events-auto cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 py-1.5 text-sm text-[#cdd7ec] transition-colors hover:text-ink"
+            >
+              ← Dashboard
+            </Link>
+          )}
           {saving && (
             <span className="pointer-events-auto rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 py-1.5 text-xs text-[#9aa6c2]">
               Saving…
@@ -751,13 +762,24 @@ function ErdBuilderInner({
               </span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => openApi(selectedTableId)}
-            className="h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
-          >
-            API
-          </button>
+          {!shellMode && (
+            <button
+              type="button"
+              onClick={() => openApi(selectedTableId)}
+              className="h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
+            >
+              API
+            </button>
+          )}
+          {shellMode && (
+            <button
+              type="button"
+              onClick={() => openApi(selectedTableId)}
+              className="h-8 cursor-pointer rounded-lg border border-[#2a3550] bg-[#141c2e] px-3 text-xs text-[#cdd7ec] transition-colors hover:bg-[#1b2540]"
+            >
+              API panel
+            </button>
+          )}
           {isOwner && (
             <button
               type="button"
@@ -1069,6 +1091,8 @@ export function ErdBuilder(props: {
   initialRelationships: ErdRelationship[];
   userRole: WorkspaceRole;
   currentUser: { id: string; name: string };
+  shellMode?: boolean;
+  planDiffTableIds?: Set<string>;
 }) {
   return (
     <ReactFlowProvider>

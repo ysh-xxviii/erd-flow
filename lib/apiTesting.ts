@@ -43,6 +43,8 @@ function normalizeRequest(row: Record<string, unknown>): ApiRequest {
     sort_order: (row.sort_order as number | null) ?? 0,
     created_by: (row.created_by as string | null) ?? null,
     created_at: row.created_at as string,
+    writeup_intro: (row.writeup_intro as string | null) ?? null,
+    writeup_steps: (row.writeup_steps as ApiRequest["writeup_steps"]) ?? [],
   };
 }
 
@@ -230,8 +232,10 @@ export async function updateRequest(
       | "body_type"
       | "collection_id"
       | "sort_order"
+      | "writeup_intro"
+      | "writeup_steps"
     >
-  >
+  > & { writeup_intro?: string | null }
 ): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
